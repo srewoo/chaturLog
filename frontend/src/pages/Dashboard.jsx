@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink, Search, Filter } from 'lucide-react';
+import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink, Search, Filter, AlertCircle, Activity, Zap, TrendingUp, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 
 export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -546,6 +546,181 @@ export default function Dashboard() {
             {/* Results Display */}
             {currentAnalysis && (
               <div className="space-y-6 fade-in">
+                {/* Log Summary Section */}
+                <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-blue-600" />
+                      <CardTitle className="text-blue-900">Log File Summary</CardTitle>
+                    </div>
+                    <CardDescription className="text-blue-700">
+                      AI-powered analysis of your log file
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Key Metrics Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Total Errors */}
+                      <div className="bg-white rounded-lg p-4 border border-red-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                              <AlertCircle className="h-4 w-4 text-red-600" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Errors Found</span>
+                          </div>
+                        </div>
+                        <p className="text-3xl font-bold text-red-600">
+                          {currentAnalysis.patterns?.filter(p => p.severity === 'high' || p.severity === 'critical').length || 0}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {currentAnalysis.patterns?.filter(p => p.severity === 'critical').length || 0} critical
+                        </p>
+                      </div>
+
+                      {/* Warnings */}
+                      <div className="bg-white rounded-lg p-4 border border-yellow-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-yellow-100 rounded-lg">
+                              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Warnings</span>
+                          </div>
+                        </div>
+                        <p className="text-3xl font-bold text-yellow-600">
+                          {currentAnalysis.patterns?.filter(p => p.severity === 'medium').length || 0}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Medium priority
+                        </p>
+                      </div>
+
+                      {/* Info Items */}
+                      <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                              <Info className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Info/Low</span>
+                          </div>
+                        </div>
+                        <p className="text-3xl font-bold text-blue-600">
+                          {currentAnalysis.patterns?.filter(p => p.severity === 'low').length || 0}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Low priority
+                        </p>
+                      </div>
+
+                      {/* Test Cases */}
+                      <div className="bg-white rounded-lg p-4 border border-green-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-green-100 rounded-lg">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Tests Generated</span>
+                          </div>
+                        </div>
+                        <p className="text-3xl font-bold text-green-600">
+                          {currentAnalysis.test_cases?.length || 0}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Ready to use
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* AI Insights */}
+                    <div className="bg-white rounded-lg p-5 border border-indigo-200">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-indigo-100 rounded-lg mt-0.5">
+                          <Sparkles className="h-5 w-5 text-indigo-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-indigo-900 mb-2">AI Analysis Summary</h3>
+                          <div className="space-y-2 text-sm text-slate-700">
+                            <p>
+                              <strong>File:</strong> {currentAnalysis.filename || 'N/A'}
+                            </p>
+                            <p>
+                              <strong>Model Used:</strong> {currentAnalysis.ai_model || aiModel}
+                            </p>
+                            <p>
+                              <strong>Analysis Date:</strong> {
+                                currentAnalysis.created_at 
+                                  ? new Date(currentAnalysis.created_at).toLocaleString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })
+                                  : 'Just now'
+                              }
+                            </p>
+                            {currentAnalysis.patterns && currentAnalysis.patterns.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-slate-200">
+                                <p className="font-medium text-slate-900 mb-2">Top Issues Detected:</p>
+                                <ul className="list-disc list-inside space-y-1 text-slate-600">
+                                  {currentAnalysis.patterns.slice(0, 3).map((pattern, idx) => (
+                                    <li key={idx} className="text-xs">
+                                      <span className="font-medium">{pattern.pattern_type}:</span> {pattern.description.substring(0, 100)}{pattern.description.length > 100 ? '...' : ''}
+                                    </li>
+                                  ))}
+                                  {currentAnalysis.patterns.length > 3 && (
+                                    <li className="text-xs italic text-slate-500">
+                                      + {currentAnalysis.patterns.length - 3} more issues detected
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="flex items-center gap-3 pt-2 border-t border-indigo-200">
+                      <span className="text-sm font-medium text-slate-700">Quick Actions:</span>
+                      <div className="flex gap-2">
+                        {currentAnalysis.test_cases && currentAnalysis.test_cases.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleExportAll(currentAnalysis.id)}
+                            className="text-xs"
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Export Tests
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Try patterns card first, then test cases card
+                            const patternsCard = document.querySelector('[data-testid="patterns-card"]');
+                            const testCasesCard = document.querySelector('[data-testid="test-cases-card"]');
+                            const targetElement = patternsCard || testCasesCard;
+                            
+                            if (targetElement) {
+                              targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          className="text-xs"
+                        >
+                          <Activity className="h-3 w-3 mr-1" />
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Patterns Card */}
                 {currentAnalysis.patterns && currentAnalysis.patterns.length > 0 && (
                   <Card data-testid="patterns-card">
