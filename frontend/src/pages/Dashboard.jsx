@@ -171,6 +171,23 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportAll = async () => {
+    if (!currentAnalysis?.id) {
+      setUploadStatus('❌ No analysis selected');
+      return;
+    }
+
+    try {
+      setUploadStatus('📦 Preparing export...');
+      await exportTests(currentAnalysis.id);
+      setUploadStatus('✅ Tests exported successfully!');
+      setTimeout(() => setUploadStatus(''), 3000);
+    } catch (err) {
+      console.error('Export error:', err);
+      setUploadStatus(`❌ Export failed: ${err.response?.data?.detail || err.message}`);
+    }
+  };
+
   const getPriorityBadge = (priority) => {
     const colors = {
       high: 'bg-red-100 text-red-800',
