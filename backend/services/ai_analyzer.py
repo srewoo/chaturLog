@@ -37,6 +37,31 @@ class LogAnalyzer:
             custom_prompt: Optional custom analysis prompt
             system_prompt: Optional system prompt to define AI's role
         """
+        # Smart log content sampling for better analysis
+        def smart_sample_log(content: str, max_chars: int = 30000) -> str:
+            """Sample log content intelligently if too large"""
+            if len(content) <= max_chars:
+                return content
+            
+            # Take from beginning, middle, and end
+            chunk_size = max_chars // 3
+            start = content[:chunk_size]
+            middle_pos = len(content) // 2 - chunk_size // 2
+            middle = content[middle_pos:middle_pos + chunk_size]
+            end = content[-chunk_size:]
+            
+            return f"""{start}
+
+... [MIDDLE SECTION - {len(content) - 2*chunk_size} characters omitted] ...
+
+{middle}
+
+... [CONTINUING - showing end of log] ...
+
+{end}"""
+        
+        sampled_log = smart_sample_log(log_content, 30000)  # Increased from 10k to 30k!
+        
         # Create analysis prompt
         if custom_prompt:
             # Use custom prompt with log content
@@ -44,8 +69,9 @@ class LogAnalyzer:
 {custom_prompt}
 
 LOG FILE: {filename}
+LOG SIZE: {len(log_content)} characters ({len(sampled_log)} analyzed)
 ===
-{log_content[:10000]}  # Limit to first 10k characters for analysis
+{sampled_log}
 ===
 
 Format your response as a structured JSON with these keys:
@@ -61,8 +87,9 @@ Format your response as a structured JSON with these keys:
 Analyze the following log file and provide a comprehensive analysis:
 
 LOG FILE: {filename}
+LOG SIZE: {len(log_content)} characters ({len(sampled_log)} analyzed)
 ===
-{log_content[:10000]}  # Limit to first 10k characters for analysis
+{sampled_log}
 ===
 
 Please provide:

@@ -6,25 +6,27 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import shutil
 import zipfile
 import io
 
 # Import custom modules
-from database import init_db, get_db, hash_password, verify_password
+from database import init_db, migrate_database, get_db, hash_password, verify_password
 from auth import create_access_token, get_current_user_id
 from services.ai_analyzer import LogAnalyzer
 from services.test_generator import TestGenerator
 from services.test_validator import TestValidator
 from services.context_analyzer import ContextAnalyzer
+from services.log_chunker import LogChunker, ChunkSummarizer, ChunkIndex
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # Initialize database
 init_db()
+migrate_database()
 
 # Create uploads directory
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -488,13 +490,109 @@ async def upload_log_file(
         logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def process_with_chunking(
+    analysis_id: int,
+    file_path: str,
+    filename: str,
+    user_id: int,
+    ai_model: str,
+    api_key: str,
+    cursor,
+    conn
+) -> Dict[str, Any]:
+    """
+    Process large log files using chunking pipeline
+    
+    Stream → Chunk → Summarize → Index → Aggregate
+    Handles logs of ANY size without token limits!
+    """
+    import json
+    
+    print(f"🚀 Starting chunking pipeline for {filename}...")
+    
+    try:
+        # Initialize chunking services
+        chunker = LogChunker(chunk_size=10000)  # 10k chars = ~2.5k tokens
+        summarizer = ChunkSummarizer(ai_model="gpt-4o-mini", api_key=api_key)  # Use mini for cost efficiency!
+        chunk_index = ChunkIndex(conn)
+        
+        # Stream and summarize chunks
+        chunk_count = 0
+        total_errors = []
+        total_api_calls = []
+        total_perf_issues = []
+        all_patterns = set()
+        
+        for chunk in chunker.stream_chunks(file_path):
+            chunk_count += 1
+            print(f"  📦 Processing chunk {chunk_count} (lines {chunk['start_line']}-{chunk['end_line']})...")
+            
+            try:
+                # Summarize chunk
+                summary = await summarizer.summarize_chunk(chunk)
+                
+                # Store in database
+                chunk_index.store_chunk_summary(analysis_id, summary)
+                
+                # Aggregate data
+                total_errors.extend(summary.get('errors_found', []))
+                total_api_calls.extend(summary.get('api_calls', []))
+                total_perf_issues.extend(summary.get('performance_issues', []))
+                all_patterns.update(summary.get('key_patterns', []))
+                
+            except Exception as e:
+                print(f"  ⚠️ Error processing chunk {chunk_count}: {e}")
+                # Continue with next chunk
+                continue
+        
+        print(f"✅ Processed {chunk_count} chunks successfully!")
+        
+        # Aggregate all summaries from database
+        aggregated = chunk_index.aggregate_summaries(analysis_id)
+        
+        # Store aggregated analysis
+        cursor.execute(
+            "UPDATE analyses SET status = ?, completed_at = ?, analysis_data = ? WHERE id = ?",
+            ("completed", datetime.now().isoformat(), json.dumps(aggregated), analysis_id)
+        )
+        
+        # Store patterns (for backward compatibility)
+        for error in aggregated.get('error_patterns', []):
+            cursor.execute(
+                "INSERT INTO patterns (analysis_id, pattern_type, description, severity) VALUES (?, ?, ?, ?)",
+                (analysis_id, error.get('type', 'error'), error.get('description', ''), error.get('severity', 'medium'))
+            )
+        
+        conn.commit()
+        
+        return {
+            "success": True,
+            "analysis_id": analysis_id,
+            "chunks_processed": chunk_count,
+            "analysis": aggregated,
+            "message": f"Analysis completed using chunking pipeline ({chunk_count} chunks processed)"
+        }
+        
+    except Exception as e:
+        print(f"❌ Chunking pipeline error: {e}")
+        cursor.execute("UPDATE analyses SET status = ? WHERE id = ?", ("failed", analysis_id))
+        conn.commit()
+        raise HTTPException(status_code=500, detail=f"Chunking pipeline error: {str(e)}")
+
+
 @api_router.post("/analyze/{analysis_id}")
 async def analyze_logs(
     analysis_id: int,
     request: AnalyzeRequest,
     user_id: int = Depends(get_current_user)
 ):
-    """Analyze uploaded log file using AI"""
+    """
+    Analyze uploaded log file using AI
+    
+    Uses intelligent routing:
+    - Small logs (< 100k chars): Single-pass analysis
+    - Large logs (>= 100k chars): Chunking pipeline (scalable!)
+    """
     conn = get_db()
     cursor = conn.cursor()
     
@@ -514,8 +612,8 @@ async def analyze_logs(
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Log file not found")
         
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            log_content = f.read()
+        # Check file size to determine processing strategy
+        file_size = file_path.stat().st_size
         
         # Update status
         cursor.execute(
@@ -526,6 +624,31 @@ async def analyze_logs(
         
         # Get user's API key
         api_key = get_user_api_key(user_id, request.ai_model)
+        
+        # Route to appropriate processing method
+        CHUNK_THRESHOLD = 100000  # 100k chars (~25k tokens)
+        
+        if file_size >= CHUNK_THRESHOLD:
+            # Use chunking pipeline for large files
+            print(f"📊 Large log detected ({file_size} bytes), using chunking pipeline...")
+            result = await process_with_chunking(
+                analysis_id=analysis_id,
+                file_path=str(file_path),
+                filename=analysis["filename"],
+                user_id=user_id,
+                ai_model=request.ai_model,
+                api_key=api_key,
+                cursor=cursor,
+                conn=conn
+            )
+            return result
+        else:
+            # Use single-pass for small files
+            print(f"📄 Small log detected ({file_size} bytes), using single-pass analysis...")
+        
+        # Single-pass analysis (existing code)
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            log_content = f.read()
         
         # Get user's default custom prompt if exists
         cursor.execute(
@@ -562,10 +685,11 @@ async def analyze_logs(
                          pattern.get("severity", "medium"), pattern.get("frequency", 1))
                     )
             
-            # Update analysis status
+            # Update analysis status and store complete analysis JSON
+            import json
             cursor.execute(
-                "UPDATE analyses SET status = ?, completed_at = ? WHERE id = ?",
-                ("completed", datetime.now().isoformat(), analysis_id)
+                "UPDATE analyses SET status = ?, completed_at = ?, analysis_data = ? WHERE id = ?",
+                ("completed", datetime.now().isoformat(), json.dumps(analysis_data), analysis_id)
             )
             conn.commit()
             
@@ -620,17 +744,79 @@ async def generate_tests(
         if analysis["status"] != "completed":
             raise HTTPException(status_code=400, detail="Analysis not completed yet")
         
-        # Get patterns
+        # Get patterns (for backward compatibility)
         cursor.execute(
             "SELECT * FROM patterns WHERE analysis_id = ?",
             (analysis_id,)
         )
         patterns = cursor.fetchall()
         
-        # Prepare analysis data
+        # Load complete analysis JSON if available (NEW!)
+        import json
+        complete_analysis = {}
+        if analysis["analysis_data"]:
+            try:
+                complete_analysis = json.loads(analysis["analysis_data"])
+            except json.JSONDecodeError:
+                print("⚠️ Warning: Could not parse stored analysis_data JSON")
+                complete_analysis = {}
+        
+        # Read log file content with smart sampling (CRITICAL FIX!)
+        log_content = ""
+        log_excerpt = ""
+        log_sample_for_testing = ""
+        
+        try:
+            with open(analysis["file_path"], 'r', encoding='utf-8') as f:
+                log_content = f.read()
+                log_excerpt = log_content[:5000]  # First 5k for quick reference
+                
+                # Smart sampling for test generation (avoid token limits!)
+                # For test generation, we only need representative samples
+                max_test_chars = 15000  # ~4k tokens (safe limit)
+                
+                if len(log_content) <= max_test_chars:
+                    log_sample_for_testing = log_content
+                else:
+                    # Sample from beginning, middle, and end
+                    chunk_size = max_test_chars // 3
+                    start = log_content[:chunk_size]
+                    middle_pos = len(log_content) // 2 - chunk_size // 2
+                    middle = log_content[middle_pos:middle_pos + chunk_size]
+                    end = log_content[-chunk_size:]
+                    
+                    log_sample_for_testing = f"""{start}
+
+... [Log continues - {len(log_content) - 2*chunk_size} chars omitted] ...
+
+{middle}
+
+... [Showing end of log] ...
+
+{end}"""
+                
+                print(f"📊 Log size: {len(log_content)} chars → Sampled {len(log_sample_for_testing)} chars for testing")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not read log file: {e}")
+        
+        # Prepare comprehensive analysis data
         analysis_data = {
+            # Patterns (backward compatibility)
             "patterns": [dict(p) for p in patterns],
-            "filename": analysis["filename"]
+            
+            # Complete AI analysis results (NEW!)
+            "error_patterns": complete_analysis.get("error_patterns", []),
+            "api_endpoints": complete_analysis.get("api_endpoints", []),
+            "performance_issues": complete_analysis.get("performance_issues", []),
+            "business_impact": complete_analysis.get("business_impact", {}),
+            "test_scenarios": complete_analysis.get("test_scenarios", []),
+            
+            # Log file information (NEW!)
+            "filename": analysis["filename"],
+            "log_file_path": analysis["file_path"],
+            "log_content": log_sample_for_testing,  # SAMPLED log content (token-safe!)
+            "log_excerpt": log_excerpt,  # First 5k for reference
+            "log_size_full": len(log_content),  # Total size for context
         }
         
         # Get user's API key

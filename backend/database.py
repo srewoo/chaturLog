@@ -36,6 +36,7 @@ def init_db():
             file_path TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
             ai_model TEXT,
+            analysis_data TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             completed_at TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
@@ -102,6 +103,27 @@ def init_db():
         )
     ''')
     
+    # Chunk Summaries table (for scalable log processing)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chunk_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_id INTEGER NOT NULL,
+            chunk_id INTEGER NOT NULL,
+            summary TEXT,
+            errors_json TEXT,
+            api_calls_json TEXT,
+            performance_issues_json TEXT,
+            key_patterns_json TEXT,
+            severity TEXT,
+            start_line INTEGER,
+            end_line INTEGER,
+            timestamp_start TEXT,
+            timestamp_end TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_id) REFERENCES analyses(id)
+        )
+    ''')
+    
     # Create indexes for performance optimization
     print("📊 Creating database indexes...")
     
@@ -147,9 +169,40 @@ def init_db():
         ON custom_prompts(user_id, is_default)
     ''')
     
+    # Index for chunk summaries (scalable log processing)
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_chunk_summaries_analysis 
+        ON chunk_summaries(analysis_id, severity)
+    ''')
+    
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_chunk_summaries_chunk 
+        ON chunk_summaries(analysis_id, chunk_id)
+    ''')
+    
     conn.commit()
     conn.close()
     print("✅ Database initialized successfully with indexes")
+
+def migrate_database():
+    """Apply database migrations for schema updates"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    print("🔄 Checking for database migrations...")
+    
+    # Migration 1: Add analysis_data column if it doesn't exist
+    try:
+        cursor.execute("SELECT analysis_data FROM analyses LIMIT 1")
+        print("✅ analysis_data column already exists")
+    except sqlite3.OperationalError:
+        print("📝 Adding analysis_data column to analyses table...")
+        cursor.execute("ALTER TABLE analyses ADD COLUMN analysis_data TEXT")
+        conn.commit()
+        print("✅ Added analysis_data column")
+    
+    conn.close()
+    print("✅ Database migrations complete")
 
 def hash_password(password: str) -> str:
     """Hash password using SHA-256"""

@@ -88,7 +88,17 @@ IMPORTANT INSTRUCTIONS:
 {context_instructions}
 
 ANALYSIS DATA:
-{str(analysis_data)}
+Log File: {analysis_data.get('filename', 'unknown')}
+Log Size: {analysis_data.get('log_size_full', 0)} characters
+
+ERROR PATTERNS: {self._format_patterns(analysis_data.get('error_patterns', []))}
+API ENDPOINTS: {self._format_api_endpoints(analysis_data.get('api_endpoints', []))}
+PERFORMANCE ISSUES: {self._format_performance_issues(analysis_data.get('performance_issues', []))}
+TEST SCENARIOS: {self._format_test_scenarios(analysis_data.get('test_scenarios', []))}
+
+LOG EXCERPT: ```
+{analysis_data.get('log_excerpt', 'No log excerpt')[:2000]}
+```
 
 FRAMEWORK: {framework.upper()}
 
@@ -130,7 +140,25 @@ Based on the following log analysis, generate comprehensive test cases using {fr
 {context_instructions}
 
 ANALYSIS DATA:
-{str(analysis_data)}
+Log File: {analysis_data.get('filename', 'unknown')}
+Log Size: {analysis_data.get('log_size_full', 0)} characters
+
+ERROR PATTERNS FOUND:
+{self._format_patterns(analysis_data.get('error_patterns', []))}
+
+API ENDPOINTS FOUND:
+{self._format_api_endpoints(analysis_data.get('api_endpoints', []))}
+
+PERFORMANCE ISSUES:
+{self._format_performance_issues(analysis_data.get('performance_issues', []))}
+
+SUGGESTED TEST SCENARIOS:
+{self._format_test_scenarios(analysis_data.get('test_scenarios', []))}
+
+LOG EXCERPT (Representative Sample):
+```
+{analysis_data.get('log_excerpt', 'No log excerpt available')[:2000]}
+```
 
 Requirements:
 1. Generate {framework.upper()} test cases for identified errors and API endpoints FROM THE ANALYSIS DATA
@@ -213,6 +241,37 @@ VERIFY before responding: Does your test code match the {framework.upper()} fram
             # Parse test cases from response
             test_cases = self._parse_test_response(response, framework)
             
+            # Reject template code - try regeneration once if detected
+            if self._contains_template_code(test_cases):
+                print("⚠️ Template code detected in first attempt, regenerating with stricter prompt...")
+                
+                # Add even stricter instruction
+                strict_prompt = f"""
+CRITICAL ERROR DETECTED: You returned template code in your previous attempt.
+
+{prompt}
+
+ABSOLUTELY FORBIDDEN PHRASES IN YOUR RESPONSE:
+- "Add your test logic here"
+- "expect(true).toBe(true)"
+- "Add your logic"
+- "TODO"
+- "FIXME"
+- "placeholder"
+
+EVERY LINE OF TEST CODE MUST BE FUNCTIONAL AND BASED ON THE ANALYSIS DATA.
+DO NOT USE ANY PLACEHOLDER TEXT OR GENERIC ASSERTIONS.
+"""
+                
+                if self.provider == "openai":
+                    response = await self._call_openai(strict_prompt, system_prompt)
+                elif self.provider == "anthropic":
+                    response = await self._call_anthropic(strict_prompt, system_prompt)
+                elif self.provider == "google":
+                    response = await self._call_google(strict_prompt, system_prompt)
+                
+                test_cases = self._parse_test_response(response, framework)
+            
             return test_cases
         except Exception as e:
             # Return a sample test case on error
@@ -235,7 +294,7 @@ VERIFY before responding: Does your test code match the {framework.upper()} fram
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+            temperature=0.7,  # Increased for more creative, specific responses
             max_tokens=4000
         )
         
@@ -250,6 +309,7 @@ VERIFY before responding: Does your test code match the {framework.upper()} fram
         response = await client.messages.create(
             model=self.model_name,
             max_tokens=4000,
+            temperature=0.7,  # Increased for more creative, specific responses
             system=system_prompt,
             messages=[
                 {"role": "user", "content": prompt}
@@ -268,8 +328,40 @@ VERIFY before responding: Does your test code match the {framework.upper()} fram
             system_instruction=system_prompt
         )
         
-        response = await model.generate_content_async(prompt)
+        generation_config = genai.GenerationConfig(
+            temperature=0.7,  # Increased for more creative, specific responses
+            max_output_tokens=4000
+        )
+        
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=generation_config
+        )
         return response.text
+    
+    def _contains_template_code(self, test_cases: List[Dict[str, Any]]) -> bool:
+        """Check if test cases contain template/placeholder code"""
+        template_indicators = [
+            'add your test logic here',
+            'add your logic',
+            'expect(true).tobe(true)',
+            'assert true',
+            'todo',
+            'fixme',
+            'placeholder',
+            'sample test',
+            'your code here',
+            'implement this'
+        ]
+        
+        for test_case in test_cases:
+            test_code = test_case.get('test_code', '').lower()
+            for indicator in template_indicators:
+                if indicator in test_code:
+                    print(f"⚠️ Found template indicator: '{indicator}'")
+                    return True
+        
+        return False
     
     def _validate_framework_match(self, test_code: str, framework: str) -> bool:
         """Validate that the test code matches the expected framework"""
@@ -737,6 +829,71 @@ RSpec.describe 'API Tests', type: :request do
 end
 ```
 """
+    
+    def _format_patterns(self, patterns: List[Dict]) -> str:
+        """Format error patterns for prompt"""
+        if not patterns:
+            return "No specific error patterns identified"
+        
+        formatted = []
+        for i, pattern in enumerate(patterns[:10], 1):  # Limit to 10
+            formatted.append(f"{i}. {pattern.get('type', 'Unknown')}: {pattern.get('description', 'No description')}")
+            formatted.append(f"   Severity: {pattern.get('severity', 'medium')}, Frequency: {pattern.get('frequency', 1)}")
+        
+        if len(patterns) > 10:
+            formatted.append(f"... and {len(patterns) - 10} more patterns")
+        
+        return '\n'.join(formatted)
+    
+    def _format_api_endpoints(self, endpoints: List[Dict]) -> str:
+        """Format API endpoints for prompt"""
+        if not endpoints:
+            return "No API endpoints identified"
+        
+        formatted = []
+        for i, ep in enumerate(endpoints[:15], 1):  # Limit to 15
+            method = ep.get('method', 'GET')
+            path = ep.get('path', '/')
+            status = ep.get('status_codes', [])
+            issues = ep.get('issues', '')
+            formatted.append(f"{i}. {method} {path} → Status: {status}")
+            if issues:
+                formatted.append(f"   Issues: {issues}")
+        
+        if len(endpoints) > 15:
+            formatted.append(f"... and {len(endpoints) - 15} more endpoints")
+        
+        return '\n'.join(formatted)
+    
+    def _format_performance_issues(self, issues: List[Dict]) -> str:
+        """Format performance issues for prompt"""
+        if not issues:
+            return "No performance issues identified"
+        
+        formatted = []
+        for i, issue in enumerate(issues[:10], 1):  # Limit to 10
+            formatted.append(f"{i}. {issue.get('issue', 'Unknown issue')}")
+            formatted.append(f"   Impact: {issue.get('impact', 'Unknown')}, Frequency: {issue.get('frequency', 'Unknown')}")
+        
+        if len(issues) > 10:
+            formatted.append(f"... and {len(issues) - 10} more issues")
+        
+        return '\n'.join(formatted)
+    
+    def _format_test_scenarios(self, scenarios: List[Dict]) -> str:
+        """Format test scenarios for prompt"""
+        if not scenarios:
+            return "No specific test scenarios suggested"
+        
+        formatted = []
+        for i, scenario in enumerate(scenarios[:10], 1):  # Limit to 10
+            formatted.append(f"{i}. {scenario.get('scenario', 'Unknown scenario')}")
+            formatted.append(f"   Priority: {scenario.get('priority', 'medium')}")
+        
+        if len(scenarios) > 10:
+            formatted.append(f"... and {len(scenarios) - 10} more scenarios")
+        
+        return '\n'.join(formatted)
     
     def _get_sample_test(self, framework: str) -> str:
         """Return a sample test case"""
