@@ -85,6 +85,23 @@ def init_db():
         )
     ''')
     
+    # Custom Prompts table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS custom_prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            system_prompt TEXT,
+            analysis_prompt TEXT,
+            test_generation_prompt TEXT,
+            is_default BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    
     # Create indexes for performance optimization
     print("📊 Creating database indexes...")
     
@@ -122,6 +139,12 @@ def init_db():
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_analyses_filename 
         ON analyses(filename)
+    ''')
+    
+    # Index for custom prompts by user
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_custom_prompts_user 
+        ON custom_prompts(user_id, is_default)
     ''')
     
     conn.commit()

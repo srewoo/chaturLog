@@ -68,6 +68,14 @@ class ApiKeysRequest(BaseModel):
     anthropic_key: Optional[str] = None
     google_key: Optional[str] = None
 
+class CustomPromptRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    analysis_prompt: Optional[str] = None
+    test_generation_prompt: Optional[str] = None
+    is_default: bool = False
+
 # ==================== Auth Dependency ====================
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> int:
@@ -259,6 +267,173 @@ def get_user_api_key(user_id: int, ai_model: str) -> str:
             return keys["google_key"]
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported AI model: {ai_model}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Custom Prompts Routes ====================
+
+@api_router.get("/prompts")
+async def get_prompts(user_id: int = Depends(get_current_user)):
+    """Get all custom prompts for user"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT * FROM custom_prompts WHERE user_id = ? ORDER BY is_default DESC, created_at DESC",
+            (user_id,)
+        )
+        prompts = cursor.fetchall()
+        conn.close()
+        
+        return {
+            "success": True,
+            "prompts": [dict(p) for p in prompts]
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/prompts/{prompt_id}")
+async def get_prompt(prompt_id: int, user_id: int = Depends(get_current_user)):
+    """Get specific custom prompt"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT * FROM custom_prompts WHERE id = ? AND user_id = ?",
+            (prompt_id, user_id)
+        )
+        prompt = cursor.fetchone()
+        conn.close()
+        
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        
+        return {
+            "success": True,
+            "prompt": dict(prompt)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/prompts")
+async def create_prompt(request: CustomPromptRequest, user_id: int = Depends(get_current_user)):
+    """Create new custom prompt"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # If setting as default, unset other defaults
+        if request.is_default:
+            cursor.execute(
+                "UPDATE custom_prompts SET is_default = 0 WHERE user_id = ?",
+                (user_id,)
+            )
+        
+        # Insert new prompt
+        cursor.execute(
+            """INSERT INTO custom_prompts 
+            (user_id, name, description, system_prompt, analysis_prompt, test_generation_prompt, is_default) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, request.name, request.description, request.system_prompt,
+             request.analysis_prompt, request.test_generation_prompt, request.is_default)
+        )
+        
+        prompt_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "prompt_id": prompt_id,
+            "message": "Custom prompt created successfully"
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/prompts/{prompt_id}")
+async def update_prompt(
+    prompt_id: int,
+    request: CustomPromptRequest,
+    user_id: int = Depends(get_current_user)
+):
+    """Update custom prompt"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Verify ownership
+        cursor.execute(
+            "SELECT id FROM custom_prompts WHERE id = ? AND user_id = ?",
+            (prompt_id, user_id)
+        )
+        if not cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        
+        # If setting as default, unset other defaults
+        if request.is_default:
+            cursor.execute(
+                "UPDATE custom_prompts SET is_default = 0 WHERE user_id = ? AND id != ?",
+                (user_id, prompt_id)
+            )
+        
+        # Update prompt
+        cursor.execute(
+            """UPDATE custom_prompts 
+            SET name = ?, description = ?, system_prompt = ?, analysis_prompt = ?, 
+                test_generation_prompt = ?, is_default = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?""",
+            (request.name, request.description, request.system_prompt,
+             request.analysis_prompt, request.test_generation_prompt,
+             request.is_default, prompt_id, user_id)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "Custom prompt updated successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: int, user_id: int = Depends(get_current_user)):
+    """Delete custom prompt"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "DELETE FROM custom_prompts WHERE id = ? AND user_id = ?",
+            (prompt_id, user_id)
+        )
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "Custom prompt deleted successfully"
+        }
     except HTTPException:
         raise
     except Exception as e:
