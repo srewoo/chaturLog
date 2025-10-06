@@ -110,6 +110,19 @@ Requirements:
 5. Make tests executable and production-ready
 6. Use project-specific patterns and conventions if context is available
 
+CODE FORMATTING STANDARDS (CRITICAL):
+- Add comprehensive docstrings explaining purpose, parameters, and expected behavior
+- Use Arrange-Act-Assert pattern with clear comment sections
+- Include inline comments explaining WHY decisions are made
+- Organize tests into logical classes/groups
+- Use descriptive variable names (no single letters except loops)
+- Add helper functions for reusable logic
+- Include detailed assertion messages that aid debugging
+- Use Path library for file handling (cross-platform compatibility)
+- Add type hints where applicable (Python) or JSDoc (JavaScript)
+- Follow PEP 8 (Python) or Airbnb style guide (JavaScript)
+- Structure: Imports → Constants → Fixtures/Setup → Test Classes → Helper Functions
+
 {template}
 
 Generate at least 3-5 test cases covering:
@@ -237,18 +250,66 @@ Respond with a JSON array of test cases:
     
     def _get_jest_template(self) -> str:
         return """
-JEST Template Example:
+JEST Template - Generate PRODUCTION-READY tests with this structure:
+
 ```javascript
+/**
+ * Test Suite: [Descriptive Name]
+ * 
+ * Purpose: [What this test suite validates]
+ * Priority: [high/medium/low]
+ * Risk Score: [0.0-1.0]
+ */
+
 import request from 'supertest';
 import { app } from '../src/app';
 
-describe('API Tests', () => {
-  it('should handle error scenario', async () => {
-    const response = await request(app).get('/api/endpoint');
-    expect(response.status).toBe(200);
+describe('[Feature/Component] Tests', () => {
+  // Setup: Configure test environment
+  beforeAll(async () => {
+    // Initialize test database, mocks, etc.
+  });
+
+  // Cleanup: Reset state after tests
+  afterAll(async () => {
+    // Close connections, clear mocks
+  });
+
+  describe('[Specific Scenario]', () => {
+    it('should [expected behavior] when [condition]', async () => {
+      // Arrange: Set up test data
+      const testData = { /* ... */ };
+
+      // Act: Execute the test
+      const response = await request(app)
+        .post('/api/endpoint')
+        .send(testData);
+
+      // Assert: Verify results
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+    });
+
+    it('should handle error when [error condition]', async () => {
+      // Test error scenarios with clear assertions
+      const response = await request(app)
+        .post('/api/endpoint')
+        .send({ invalid: 'data' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
+    });
   });
 });
 ```
+
+IMPORTANT FORMATTING RULES:
+- Use descriptive test names with "should [action] when [condition]"
+- Add JSDoc comments for test suites
+- Follow Arrange-Act-Assert pattern
+- Include setup/teardown hooks
+- Group related tests with nested describe blocks
+- Add inline comments explaining complex logic
 """
     
     def _get_junit_template(self) -> str:
@@ -272,15 +333,201 @@ public class ApiTests {
     
     def _get_pytest_template(self) -> str:
         return """
-PYTEST Template Example:
-```python
-import pytest
-import requests
+PYTEST Template - Generate PRODUCTION-READY tests with this structure:
 
-def test_error_scenario():
-    response = requests.get('http://localhost:8000/api/endpoint')
-    assert response.status_code == 200
+```python
+\"\"\"
+Test Suite: [Descriptive Name]
+
+Purpose: [What this test suite validates]
+Priority: [high/medium/low]
+Risk Score: [0.0-1.0]
+
+Author: ChaturLog Auto-Generated
+Framework: pytest
+\"\"\"
+
+import pytest
+import json
+import re
+from pathlib import Path
+from typing import Dict, List, Any
+
+
+# ============================================================================
+# Fixtures: Reusable test data and setup
+# ============================================================================
+
+@pytest.fixture(scope='module')
+def log_file_path():
+    \"\"\"Return path to log file for testing.\"\"\"
+    return Path(__file__).parent / 'logs' / 'test-log.json'
+
+
+@pytest.fixture(scope='module')
+def log_data(log_file_path):
+    \"\"\"Load and parse log file content.\"\"\"
+    with open(log_file_path, 'r', encoding='utf-8') as file:
+        return file.read()
+
+
+@pytest.fixture(scope='module')
+def parsed_logs(log_data):
+    \"\"\"Parse log data into structured format.\"\"\"
+    try:
+        return json.loads(log_data)
+    except json.JSONDecodeError:
+        return log_data.split('\\n')
+
+
+# ============================================================================
+# Test Cases: Organized by functionality
+# ============================================================================
+
+class TestErrorPatterns:
+    \"\"\"Test suite for validating error patterns in logs.\"\"\"
+    
+    def test_no_critical_errors(self, log_data):
+        \"\"\"
+        Verify no critical errors exist in logs.
+        
+        Critical errors indicate severe issues that may cause
+        system failures or data corruption.
+        \"\"\"
+        # Arrange: Define critical error patterns
+        critical_patterns = [
+            r'CRITICAL',
+            r'FATAL',
+            r'\\[Circular\\]',
+            r'OutOfMemory',
+            r'StackOverflow'
+        ]
+        
+        # Act: Search for critical patterns
+        found_errors = []
+        for pattern in critical_patterns:
+            matches = re.findall(pattern, log_data, re.IGNORECASE)
+            if matches:
+                found_errors.append((pattern, len(matches)))
+        
+        # Assert: No critical errors should exist
+        assert len(found_errors) == 0, (
+            f'Found {len(found_errors)} critical error patterns:\\n' +
+            '\\n'.join(f'  - {pat}: {count} occurrences' 
+                      for pat, count in found_errors)
+        )
+    
+    def test_error_rate_within_threshold(self, parsed_logs):
+        \"\"\"
+        Verify error rate is within acceptable threshold.
+        
+        Error rate should be < 5% of total log entries.
+        \"\"\"
+        # Arrange
+        if isinstance(parsed_logs, list):
+            total_entries = len(parsed_logs)
+            error_entries = sum(1 for log in parsed_logs 
+                              if 'error' in str(log).lower())
+        else:
+            total_entries = 1
+            error_entries = 0
+        
+        # Calculate error rate
+        error_rate = (error_entries / total_entries * 100) if total_entries > 0 else 0
+        threshold = 5.0
+        
+        # Assert: Error rate below threshold
+        assert error_rate < threshold, (
+            f'Error rate {error_rate:.2f}% exceeds threshold {threshold}%. '
+            f'Found {error_entries} errors in {total_entries} log entries.'
+        )
+
+
+class TestAPIEndpoints:
+    \"\"\"Test suite for API endpoint validation from logs.\"\"\"
+    
+    def test_no_500_errors(self, log_data):
+        \"\"\"Verify no HTTP 500 errors in API calls.\"\"\"
+        # Arrange: Pattern for HTTP 500 errors
+        pattern = re.compile(r'HTTP\\s*500|status[:\\s]*500', re.IGNORECASE)
+        
+        # Act: Find all matches
+        matches = pattern.findall(log_data)
+        
+        # Assert: No 500 errors
+        assert len(matches) == 0, (
+            f'Found {len(matches)} HTTP 500 errors. '
+            f'This indicates server-side failures that need investigation.'
+        )
+    
+    @pytest.mark.parametrize('status_code', [400, 401, 403, 404])
+    def test_client_error_codes(self, log_data, status_code):
+        \"\"\"Test handling of client error codes (4xx).\"\"\"
+        pattern = re.compile(
+            rf'HTTP\\s*{status_code}|status[:\\s]*{status_code}',
+            re.IGNORECASE
+        )
+        matches = pattern.findall(log_data)
+        
+        # Note: Client errors are acceptable but should be monitored
+        if matches:
+            print(f'INFO: Found {len(matches)} HTTP {status_code} responses')
+
+
+class TestPerformance:
+    \"\"\"Test suite for performance issues in logs.\"\"\"
+    
+    def test_no_timeout_errors(self, log_data):
+        \"\"\"Verify no timeout errors in logs.\"\"\"
+        # Arrange: Timeout patterns
+        timeout_patterns = [
+            r'timeout',
+            r'timed out',
+            r'ETIMEDOUT',
+            r'request timeout'
+        ]
+        
+        # Act: Search for timeout patterns
+        found_timeouts = []
+        for pattern in timeout_patterns:
+            matches = re.findall(pattern, log_data, re.IGNORECASE)
+            if matches:
+                found_timeouts.extend(matches)
+        
+        # Assert: No timeouts
+        assert len(found_timeouts) == 0, (
+            f'Found {len(found_timeouts)} timeout occurrences. '
+            f'This indicates performance issues or network problems.'
+        )
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def extract_timestamps(log_data: str) -> List[str]:
+    \"\"\"Extract timestamps from log entries.\"\"\"
+    timestamp_pattern = r'\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}'
+    return re.findall(timestamp_pattern, log_data)
+
+
+def count_pattern_occurrences(log_data: str, pattern: str) -> int:
+    \"\"\"Count occurrences of a pattern in log data.\"\"\"
+    return len(re.findall(pattern, log_data, re.IGNORECASE))
 ```
+
+IMPORTANT FORMATTING RULES:
+- Use triple-quoted docstrings for all classes and functions
+- Organize tests into logical classes
+- Follow Arrange-Act-Assert pattern with clear comments
+- Use descriptive test names: test_[what]_[condition]
+- Include helper functions for reusable logic
+- Use @pytest.mark.parametrize for testing multiple scenarios
+- Add inline comments explaining WHY, not just WHAT
+- Include assertion messages that help debugging
+- Use Path for file handling (cross-platform)
+- Handle exceptions gracefully
+- Group related fixtures together
 """
     
     def _get_mocha_template(self) -> str:
