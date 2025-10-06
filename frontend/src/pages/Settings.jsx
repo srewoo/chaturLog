@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
 import { Switch } from '../components/ui/switch';
-import { ArrowLeft, Save, Key, HelpCircle, CheckCircle, FileText, Plus, Edit2, Trash2, Star } from 'lucide-react';
+import { ArrowLeft, Save, Key, CheckCircle, FileText, Plus, Edit2, Trash2, Star } from 'lucide-react';
 import axios from 'axios';
 import { getPrompts, createPrompt, updatePrompt, deletePrompt } from '../utils/api';
 
@@ -38,6 +38,96 @@ export default function Settings() {
     test_generation_prompt: '',
     is_default: false
   });
+
+  // Default prompt templates
+  const defaultPrompts = [
+    {
+      name: "Standard Analysis (Built-in Default)",
+      description: "ChaturLog's default prompt - comprehensive error analysis with business impact",
+      system_prompt: "You are an expert log analyzer. Analyze logs and identify errors, patterns, performance issues, and API endpoints.",
+      analysis_prompt: `Analyze the following log file and provide a comprehensive analysis:
+
+Please provide:
+1. Error Patterns: List all error patterns with severity (critical/high/medium/low)
+2. API Endpoints: Extract all API endpoints, HTTP methods, and status codes
+3. Performance Issues: Identify slow requests, timeouts, or bottlenecks
+4. Business Impact: Assess user impact and severity
+5. Test Scenarios: Suggest key test scenarios based on the errors found`,
+      test_generation_prompt: `Generate comprehensive test cases based on the log analysis:
+
+Requirements:
+1. Generate test cases for identified errors and API endpoints
+2. Include proper imports and setup/teardown
+3. Add assertions for error conditions, status codes, and response validation
+4. Prioritize tests by risk score (critical errors first)
+5. Make tests executable and production-ready`
+    },
+    {
+      name: "Security-Focused Analysis",
+      description: "Emphasizes authentication, authorization, and security vulnerabilities",
+      system_prompt: "You are a security-focused log analyst specializing in identifying authentication failures, unauthorized access attempts, and security vulnerabilities.",
+      analysis_prompt: `Analyze logs with a security focus:
+
+Prioritize:
+- Authentication and authorization errors
+- Failed login attempts and suspicious patterns
+- SQL injection or XSS attempts
+- Rate limiting violations
+- Unusual access patterns
+- Data exposure risks`,
+      test_generation_prompt: `Generate security-focused test cases:
+
+Include:
+- Authentication and authorization tests
+- Input validation and sanitization tests
+- Rate limiting tests
+- Session management tests
+- Security header validation`
+    },
+    {
+      name: "Performance-Focused Analysis",
+      description: "Identifies bottlenecks, slow queries, and optimization opportunities",
+      system_prompt: "You are a performance optimization specialist analyzing logs for bottlenecks, slow queries, and scalability issues.",
+      analysis_prompt: `Analyze logs for performance issues:
+
+Focus on:
+- Response times > 1000ms
+- Database query performance
+- Memory usage patterns
+- Cache hit/miss ratios
+- Third-party API latencies
+- Resource-intensive operations`,
+      test_generation_prompt: `Generate performance test cases:
+
+Include:
+- Load testing scenarios
+- Response time assertions
+- Query optimization tests
+- Memory leak detection
+- Concurrent request handling`
+    },
+    {
+      name: "API Testing Focus",
+      description: "Optimized for REST API testing with comprehensive endpoint coverage",
+      system_prompt: "You are an API testing expert specializing in REST API validation, contract testing, and integration testing.",
+      analysis_prompt: `Analyze logs for API-specific insights:
+
+Extract:
+- All API endpoints and methods
+- Status code distributions
+- Request/response patterns
+- Error responses and validation failures
+- API versioning issues`,
+      test_generation_prompt: `Generate API test cases with:
+
+- Comprehensive endpoint coverage
+- Request/response validation
+- Status code assertions
+- Error handling scenarios
+- Edge cases and boundary testing
+- Mock data generation`
+    }
+  ];
 
   // Load saved keys and prompts on mount
   useEffect(() => {
@@ -176,6 +266,19 @@ export default function Settings() {
     }
   };
 
+  const handleUseTemplate = (template) => {
+    setEditingPrompt(null);
+    setPromptForm({
+      name: template.name,
+      description: template.description,
+      system_prompt: template.system_prompt,
+      analysis_prompt: template.analysis_prompt,
+      test_generation_prompt: template.test_generation_prompt,
+      is_default: false
+    });
+    setShowPromptForm(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
@@ -201,7 +304,7 @@ export default function Settings() {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="api-keys" className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-3">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="api-keys" data-testid="api-keys-tab">
               <Key className="h-4 w-4 mr-2" />
               API Keys
@@ -209,10 +312,6 @@ export default function Settings() {
             <TabsTrigger value="prompts" data-testid="prompts-tab">
               <FileText className="h-4 w-4 mr-2" />
               Custom Prompts
-            </TabsTrigger>
-            <TabsTrigger value="help" data-testid="help-tab">
-              <HelpCircle className="h-4 w-4 mr-2" />
-              Help
             </TabsTrigger>
           </TabsList>
 
@@ -517,75 +616,118 @@ export default function Settings() {
                   </div>
                 ) : (
                   /* Prompts List */
-                  <div className="space-y-4">
-                    {prompts.length === 0 ? (
-                      <div className="text-center py-12">
-                        <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                        <p className="text-slate-500 mb-4">No custom prompts yet</p>
-                        <Button onClick={handleCreatePrompt} variant="outline">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Create Your First Prompt
-                        </Button>
+                  <div className="space-y-6">
+                    {/* Default Templates Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 mb-3">📋 Default Templates</h3>
+                      <p className="text-xs text-slate-600 mb-4">
+                        Use these as starting points for your custom prompts. Click "Use as Template" to copy and modify.
+                      </p>
+                      <div className="space-y-3">
+                        {defaultPrompts.map((template, idx) => (
+                          <Card key={idx} className="bg-slate-50 border-slate-200">
+                            <CardContent className="pt-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-slate-900 text-sm mb-1">{template.name}</h4>
+                                  <p className="text-xs text-slate-600 mb-2">{template.description}</p>
+                                  <div className="flex gap-2">
+                                    <Badge variant="outline" className="text-xs">System</Badge>
+                                    <Badge variant="outline" className="text-xs">Analysis</Badge>
+                                    <Badge variant="outline" className="text-xs">Test Gen</Badge>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleUseTemplate(template)}
+                                  className="ml-4"
+                                >
+                                  <FileText className="h-3 w-3 mr-1" />
+                                  Use as Template
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
                       </div>
-                    ) : (
-                      prompts.map((prompt) => (
-                        <Card key={prompt.id} className="hover:shadow-md transition-shadow">
-                          <CardContent className="pt-6">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <h3 className="font-semibold text-slate-900">{prompt.name}</h3>
-                                  {prompt.is_default && (
-                                    <Badge className="bg-amber-100 text-amber-800 border-amber-300">
-                                      <Star className="h-3 w-3 mr-1" />
-                                      Default
-                                    </Badge>
-                                  )}
+                    </div>
+
+                    {/* User's Custom Prompts Section */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 mb-3">✨ Your Custom Prompts</h3>
+                      {prompts.length === 0 ? (
+                        <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
+                          <FileText className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                          <p className="text-slate-500 text-sm mb-3">No custom prompts yet</p>
+                          <Button onClick={handleCreatePrompt} variant="outline" size="sm">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Your First Prompt
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {prompts.map((prompt) => (
+                            <Card key={prompt.id} className="hover:shadow-md transition-shadow">
+                              <CardContent className="pt-6">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <h3 className="font-semibold text-slate-900">{prompt.name}</h3>
+                                      {prompt.is_default && (
+                                        <Badge className="bg-amber-100 text-amber-800 border-amber-300">
+                                          <Star className="h-3 w-3 mr-1" />
+                                          Default
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {prompt.description && (
+                                      <p className="text-sm text-slate-600 mb-3">{prompt.description}</p>
+                                    )}
+                                    <div className="flex gap-2 text-xs text-slate-500">
+                                      {prompt.system_prompt && (
+                                        <Badge variant="outline">System</Badge>
+                                      )}
+                                      {prompt.analysis_prompt && (
+                                        <Badge variant="outline">Analysis</Badge>
+                                      )}
+                                      {prompt.test_generation_prompt && (
+                                        <Badge variant="outline">Test Gen</Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleEditPrompt(prompt)}
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDeletePrompt(prompt.id)}
+                                      className="text-red-600 hover:text-red-700"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
-                                {prompt.description && (
-                                  <p className="text-sm text-slate-600 mb-3">{prompt.description}</p>
-                                )}
-                                <div className="flex gap-2 text-xs text-slate-500">
-                                  {prompt.system_prompt && (
-                                    <Badge variant="outline">System</Badge>
-                                  )}
-                                  {prompt.analysis_prompt && (
-                                    <Badge variant="outline">Analysis</Badge>
-                                  )}
-                                  {prompt.test_generation_prompt && (
-                                    <Badge variant="outline">Test Gen</Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleEditPrompt(prompt)}
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDeletePrompt(prompt.id)}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Info Box */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <p className="text-sm text-blue-900 font-medium mb-2">
                         💡 Tips for Creating Effective Prompts
                       </p>
                       <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• Start with a default template and customize it</li>
                         <li>• Be specific about what you want the AI to focus on</li>
                         <li>• Use examples to guide the AI's output format</li>
                         <li>• Set one prompt as default for consistent results</li>
@@ -594,116 +736,6 @@ export default function Settings() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Help Tab */}
-          <TabsContent value="help">
-            <Card>
-              <CardHeader>
-                <CardTitle>Help & Documentation</CardTitle>
-                <CardDescription>
-                  Resources to help you get the most out of ChaturLog
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Documentation Links */}
-                <div className="space-y-4">
-                  <div className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                    <h3 className="font-medium text-slate-900 mb-2">📖 Setup Guide</h3>
-                    <p className="text-sm text-slate-600 mb-3">
-                      Complete installation and configuration instructions
-                    </p>
-                    <a
-                      href="https://github.com/yourusername/chaturlog/blob/main/SETUP_GUIDE.md"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm font-medium"
-                    >
-                      View Setup Guide →
-                    </a>
-                  </div>
-
-                  <div className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                    <h3 className="font-medium text-slate-900 mb-2">🔍 Application Analysis</h3>
-                    <p className="text-sm text-slate-600 mb-3">
-                      Comprehensive overview of features and architecture
-                    </p>
-                    <a
-                      href="https://github.com/yourusername/chaturlog/blob/main/COMPLETE_APPLICATION_ANALYSIS.md"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm font-medium"
-                    >
-                      View Analysis →
-                    </a>
-                  </div>
-
-                  <div className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                    <h3 className="font-medium text-slate-900 mb-2">⚙️ Environment Configuration</h3>
-                    <p className="text-sm text-slate-600 mb-3">
-                      Environment variables and configuration options
-                    </p>
-                    <a
-                      href="https://github.com/yourusername/chaturlog/blob/main/ENV_SETUP.md"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm font-medium"
-                    >
-                      View Configuration Guide →
-                    </a>
-                  </div>
-                </div>
-
-                {/* Quick Links */}
-                <div className="border-t border-slate-200 pt-6">
-                  <h3 className="font-medium text-slate-900 mb-4">Quick Links</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <a
-                      href="https://platform.openai.com/docs"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      OpenAI Documentation →
-                    </a>
-                    <a
-                      href="https://docs.anthropic.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Anthropic Documentation →
-                    </a>
-                    <a
-                      href="https://ai.google.dev/docs"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Google AI Documentation →
-                    </a>
-                    <a
-                      href="https://github.com/yourusername/chaturlog"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      GitHub Repository →
-                    </a>
-                  </div>
-                </div>
-
-                {/* Version Info */}
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
-                  <p className="text-sm text-slate-600">
-                    ChaturLog v1.0.0
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    AI-Powered Log Analysis & Test Generation
-                  </p>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>

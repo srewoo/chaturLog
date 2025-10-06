@@ -18,6 +18,7 @@ from auth import create_access_token, get_current_user_id
 from services.ai_analyzer import LogAnalyzer
 from services.test_generator import TestGenerator
 from services.test_validator import TestValidator
+from services.context_analyzer import ContextAnalyzer
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -648,7 +649,16 @@ async def generate_tests(
             system_prompt = custom_prompt_row["system_prompt"]
             test_gen_prompt = custom_prompt_row["test_generation_prompt"]
         
-        # Generate tests
+        # Analyze project context for context-aware test generation
+        context_analyzer = ContextAnalyzer()
+        project_context = context_analyzer.analyze_project_context(analysis["file_path"])
+        context_summary = context_analyzer.format_context_for_prompt(project_context)
+        
+        # Add context to analysis data
+        analysis_data['project_context'] = context_summary
+        analysis_data['testing_framework_detected'] = project_context.get('testing_framework')
+        
+        # Generate tests with context awareness
         generator = TestGenerator(ai_model=analysis["ai_model"], api_key=api_key)
         test_cases = await generator.generate_tests(
             analysis_data, 

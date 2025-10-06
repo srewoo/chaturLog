@@ -49,10 +49,31 @@ class TestGenerator:
         
         template = framework_templates.get(framework, framework_templates["jest"])
         
+        # Extract context information
+        project_context = analysis_data.get('project_context', '')
+        detected_framework = analysis_data.get('testing_framework_detected')
+        
+        context_instructions = ""
+        if project_context:
+            context_instructions = f"""
+IMPORTANT - Use the following project context to generate tests that match the project structure:
+
+{project_context}
+
+Generate tests that:
+- Follow the project's existing patterns and conventions
+- Use the correct import style for the project
+- Match the project's testing framework ({detected_framework or framework})
+- Use appropriate file paths based on project structure
+- Include proper mocking for dependencies
+"""
+        
         if custom_prompt:
             # Use custom prompt
             prompt = f"""
 {custom_prompt}
+
+{context_instructions}
 
 ANALYSIS DATA:
 {str(analysis_data)}
@@ -76,15 +97,18 @@ Respond with a JSON array of test cases:
             prompt = f"""
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
 
+{context_instructions}
+
 ANALYSIS DATA:
 {str(analysis_data)}
 
 Requirements:
 1. Generate {framework.upper()} test cases for identified errors and API endpoints
-2. Include proper imports and setup/teardown
+2. Include proper imports and setup/teardown (matching project structure if context provided)
 3. Add assertions for error conditions, status codes, and response validation
 4. Prioritize tests by risk score (critical errors first)
 5. Make tests executable and production-ready
+6. Use project-specific patterns and conventions if context is available
 
 {template}
 
