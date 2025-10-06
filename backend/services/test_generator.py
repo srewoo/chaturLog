@@ -36,7 +36,10 @@ class TestGenerator:
         framework_templates = {
             "jest": self._get_jest_template(),
             "junit": self._get_junit_template(),
-            "pytest": self._get_pytest_template()
+            "pytest": self._get_pytest_template(),
+            "mocha": self._get_mocha_template(),
+            "cypress": self._get_cypress_template(),
+            "rspec": self._get_rspec_template()
         }
         
         template = framework_templates.get(framework, framework_templates["jest"])
@@ -223,6 +226,78 @@ def test_error_scenario():
 ```
 """
     
+    def _get_mocha_template(self) -> str:
+        return """
+MOCHA Template Example:
+```javascript
+const chai = require('chai');
+const request = require('supertest');
+const expect = chai.expect;
+const app = require('../src/app');
+
+describe('API Tests', function() {
+  it('should handle error scenario', function(done) {
+    request(app)
+      .get('/api/endpoint')
+      .expect(200)
+      .end(function(err, res) {
+        expect(res.status).to.equal(200);
+        done();
+      });
+  });
+});
+```
+"""
+    
+    def _get_cypress_template(self) -> str:
+        return """
+CYPRESS Template Example:
+```javascript
+describe('API E2E Tests', () => {
+  beforeEach(() => {
+    cy.visit('/');
+  });
+
+  it('should handle error scenario', () => {
+    cy.request('GET', '/api/endpoint')
+      .its('status')
+      .should('eq', 200);
+  });
+
+  it('should display error message on failure', () => {
+    cy.intercept('GET', '/api/endpoint', { statusCode: 500 }).as('apiFailure');
+    cy.visit('/dashboard');
+    cy.wait('@apiFailure');
+    cy.contains('Error').should('be.visible');
+  });
+});
+```
+"""
+    
+    def _get_rspec_template(self) -> str:
+        return """
+RSPEC Template Example:
+```ruby
+require 'rails_helper'
+require 'net/http'
+
+RSpec.describe 'API Tests', type: :request do
+  describe 'GET /api/endpoint' do
+    it 'handles error scenario' do
+      get '/api/endpoint'
+      expect(response).to have_http_status(:ok)
+      expect(response.content_type).to match(/json/)
+    end
+
+    it 'returns proper error on invalid request' do
+      get '/api/endpoint', params: { invalid: 'data' }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+end
+```
+"""
+    
     def _get_sample_test(self, framework: str) -> str:
         """Return a sample test case"""
         samples = {
@@ -247,6 +322,28 @@ public class SampleTest {
 
 def test_sample():
     assert True
+""",
+            "mocha": """const chai = require('chai');
+const expect = chai.expect;
+
+describe('Sample Test', function() {
+  it('should return true', function() {
+    expect(true).to.be.true;
+  });
+});""",
+            "cypress": """describe('Sample E2E Test', () => {
+  it('should load the page', () => {
+    cy.visit('/');
+    cy.contains('Welcome').should('be.visible');
+  });
+});""",
+            "rspec": """require 'rails_helper'
+
+RSpec.describe 'Sample Test' do
+  it 'should return true' do
+    expect(true).to be true
+  end
+end
 """
         }
         return samples.get(framework, samples["jest"])

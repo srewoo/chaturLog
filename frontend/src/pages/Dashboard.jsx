@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Input } from '../components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink } from 'lucide-react';
+import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink, Search, Filter } from 'lucide-react';
 
 export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -25,6 +26,9 @@ export default function Dashboard() {
   const [currentAnalysis, setCurrentAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterModel, setFilterModel] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const navigate = useNavigate();
 
   const userEmail = localStorage.getItem('user_email');
@@ -156,6 +160,23 @@ export default function Dashboard() {
     };
     return colors[status] || colors.pending;
   };
+
+  // Filter analyses based on search and filter criteria
+  const filteredAnalyses = analyses.filter(analysis => {
+    // Search filter
+    const matchesSearch = !searchQuery || 
+      analysis.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (analysis.ai_model && analysis.ai_model.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    // Model filter
+    const matchesModel = filterModel === 'all' || 
+      (analysis.ai_model && analysis.ai_model.toLowerCase().includes(filterModel.toLowerCase()));
+    
+    // Status filter
+    const matchesStatus = filterStatus === 'all' || analysis.status === filterStatus;
+    
+    return matchesSearch && matchesModel && matchesStatus;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -392,8 +413,11 @@ export default function Dashboard() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="jest">Jest (JavaScript)</SelectItem>
+                        <SelectItem value="mocha">Mocha (JavaScript)</SelectItem>
+                        <SelectItem value="cypress">Cypress (E2E)</SelectItem>
                         <SelectItem value="junit">JUnit (Java)</SelectItem>
                         <SelectItem value="pytest">pytest (Python)</SelectItem>
+                        <SelectItem value="rspec">RSpec (Ruby)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -538,18 +562,108 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle>Analysis History</CardTitle>
                 <CardDescription>
-                  View and manage your previous log analyses
+                  View and manage your previous log analyses ({filteredAnalyses.length})
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Search and Filter Controls */}
+                <div className="space-y-4 mb-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      placeholder="Search by filename or model..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                      data-testid="search-input"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className="text-sm font-medium text-slate-700 mb-2 block">
+                        <Filter className="inline h-3 w-3 mr-1" />
+                        AI Model
+                      </label>
+                      <Select value={filterModel} onValueChange={setFilterModel}>
+                        <SelectTrigger data-testid="filter-model-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Models</SelectItem>
+                          <SelectItem value="gpt">GPT Models</SelectItem>
+                          <SelectItem value="claude">Claude Models</SelectItem>
+                          <SelectItem value="gemini">Gemini Models</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="flex-1">
+                      <label className="text-sm font-medium text-slate-700 mb-2 block">
+                        <Filter className="inline h-3 w-3 mr-1" />
+                        Status
+                      </label>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger data-testid="filter-status-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {(searchQuery || filterModel !== 'all' || filterStatus !== 'all') && (
+                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                      <span className="text-sm text-blue-700">
+                        Showing {filteredAnalyses.length} of {analyses.length} analyses
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setFilterModel('all');
+                          setFilterStatus('all');
+                        }}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Analysis List */}
                 {analyses.length === 0 ? (
                   <div className="text-center py-12">
                     <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
                     <p className="text-slate-500">No analyses yet. Upload a log file to get started!</p>
                   </div>
+                ) : filteredAnalyses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Search className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                    <p className="text-slate-500">No analyses match your filters</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setFilterModel('all');
+                        setFilterStatus('all');
+                      }}
+                      className="mt-4"
+                    >
+                      Clear Filters
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {analyses.map((analysis) => (
+                    {filteredAnalyses.map((analysis) => (
                       <div
                         key={analysis.id}
                         className="p-4 border border-slate-200 rounded-lg card-hover cursor-pointer"

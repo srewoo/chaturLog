@@ -85,9 +85,48 @@ def init_db():
         )
     ''')
     
+    # Create indexes for performance optimization
+    print("📊 Creating database indexes...")
+    
+    # Index for frequent user queries (analyses by user, sorted by date)
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_analyses_user_created 
+        ON analyses(user_id, created_at DESC)
+    ''')
+    
+    # Index for analysis status queries
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_analyses_status 
+        ON analyses(status)
+    ''')
+    
+    # Index for pattern lookups by analysis
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_patterns_analysis 
+        ON patterns(analysis_id, severity)
+    ''')
+    
+    # Index for test case queries by analysis
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_test_cases_analysis 
+        ON test_cases(analysis_id, priority)
+    ''')
+    
+    # Index for test framework filtering
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_test_cases_framework 
+        ON test_cases(framework)
+    ''')
+    
+    # Index for filename searches
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_analyses_filename 
+        ON analyses(filename)
+    ''')
+    
     conn.commit()
     conn.close()
-    print("✅ Database initialized successfully")
+    print("✅ Database initialized successfully with indexes")
 
 def hash_password(password: str) -> str:
     """Hash password using SHA-256"""
