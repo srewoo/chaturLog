@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Header, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
@@ -9,12 +9,15 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 import shutil
+import zipfile
+import io
 
 # Import custom modules
 from database import init_db, get_db, hash_password, verify_password
 from auth import create_access_token, get_current_user_id
 from services.ai_analyzer import LogAnalyzer
 from services.test_generator import TestGenerator
+from services.test_validator import TestValidator
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -443,11 +446,26 @@ async def generate_tests(
         generator = TestGenerator(ai_model=analysis["ai_model"], api_key=api_key)
         test_cases = await generator.generate_tests(analysis_data, request.framework)
         
-        # Store test cases
+        # Validate and store test cases
+        validator = TestValidator()
+        validated_cases = []
+        
         for test_case in test_cases:
+            test_code = test_case.get("test_code", "")
+            
+            # Validate test code
+            validation_result = validator.validate_test_code(test_code, request.framework)
+            quality_score = validator.calculate_quality_score(validation_result)
+            
+            # Add validation info to test case
+            test_case["validation"] = validation_result
+            test_case["quality_score"] = quality_score
+            validated_cases.append(test_case)
+            
+            # Store in database
             cursor.execute(
                 "INSERT INTO test_cases (analysis_id, framework, test_code, risk_score, priority, description) VALUES (?, ?, ?, ?, ?, ?)",
-                (analysis_id, request.framework, test_case.get("test_code", ""), 
+                (analysis_id, request.framework, test_code, 
                  test_case.get("risk_score", 0.5), test_case.get("priority", "medium"),
                  test_case.get("description", ""))
             )
@@ -455,12 +473,22 @@ async def generate_tests(
         conn.commit()
         conn.close()
         
+        # Calculate validation summary
+        valid_count = sum(1 for tc in validated_cases if tc["validation"]["valid"])
+        avg_quality = sum(tc["quality_score"] for tc in validated_cases) / len(validated_cases) if validated_cases else 0
+        
         return {
             "success": True,
             "analysis_id": analysis_id,
             "framework": request.framework,
-            "test_cases": test_cases,
-            "message": f"Generated {len(test_cases)} test cases"
+            "test_cases": validated_cases,
+            "validation_summary": {
+                "total": len(validated_cases),
+                "valid": valid_count,
+                "invalid": len(validated_cases) - valid_count,
+                "average_quality_score": round(avg_quality, 2)
+            },
+            "message": f"Generated {len(validated_cases)} test cases ({valid_count} valid)"
         }
     
     except HTTPException:
@@ -521,6 +549,114 @@ async def get_analysis(analysis_id: int, user_id: int = Depends(get_current_user
         "patterns": [dict(p) for p in patterns],
         "test_cases": [dict(t) for t in tests]
     }
+
+@api_router.get("/export/{analysis_id}")
+async def export_tests(analysis_id: int, user_id: int = Depends(get_current_user)):
+    """Export all test cases for an analysis as a ZIP file"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Verify analysis belongs to user
+        cursor.execute(
+            "SELECT * FROM analyses WHERE id = ? AND user_id = ?",
+            (analysis_id, user_id)
+        )
+        analysis = cursor.fetchone()
+        
+        if not analysis:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        # Get all test cases
+        cursor.execute(
+            "SELECT * FROM test_cases WHERE analysis_id = ? ORDER BY framework, priority",
+            (analysis_id,)
+        )
+        tests = cursor.fetchall()
+        conn.close()
+        
+        if not tests:
+            raise HTTPException(status_code=404, detail="No test cases found for this analysis")
+        
+        # Create ZIP file in memory
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Group tests by framework
+            tests_by_framework = {}
+            for test in tests:
+                framework = test["framework"]
+                if framework not in tests_by_framework:
+                    tests_by_framework[framework] = []
+                tests_by_framework[framework].append(test)
+            
+            # Add tests to ZIP, organized by framework
+            for framework, framework_tests in tests_by_framework.items():
+                # Determine file extension
+                extensions = {
+                    "jest": "test.js",
+                    "mocha": "test.js",
+                    "cypress": "cy.js",
+                    "junit": "Test.java",
+                    "pytest": "test.py",
+                    "rspec": "_spec.rb"
+                }
+                ext = extensions.get(framework, "test.txt")
+                
+                for idx, test in enumerate(framework_tests, 1):
+                    filename = f"{framework}/test_{idx:03d}.{ext}"
+                    
+                    # Add description as comment
+                    content = f"""{'#' if framework in ['pytest', 'rspec'] else '//'} Test Case #{idx}
+{'#' if framework in ['pytest', 'rspec'] else '//'} Priority: {test.get('priority', 'medium')}
+{'#' if framework in ['pytest', 'rspec'] else '//'} Description: {test.get('description', 'N/A')}
+{'#' if framework in ['pytest', 'rspec'] else '//'} Risk Score: {test.get('risk_score', 0.0)}
+
+{test['test_code']}
+"""
+                    zip_file.writestr(filename, content)
+            
+            # Add README
+            readme_content = f"""# ChaturLog - Generated Test Cases
+
+Analysis ID: {analysis_id}
+File: {analysis['filename']}
+AI Model: {analysis['ai_model']}
+Generated: {analysis['created_at']}
+
+## Test Statistics
+- Total Test Cases: {len(tests)}
+- Frameworks: {', '.join(tests_by_framework.keys())}
+
+## Structure
+Tests are organized by framework in separate directories:
+{chr(10).join(f'- {fw}/ ({len(tests_by_framework[fw])} tests)' for fw in tests_by_framework.keys())}
+
+## Running Tests
+Refer to each framework's documentation for specific setup and execution instructions.
+
+---
+Generated by ChaturLog - AI-Powered Log Analysis & Test Generation
+"""
+            zip_file.writestr("README.md", readme_content)
+        
+        # Prepare response
+        zip_buffer.seek(0)
+        
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename=chaturlog_tests_{analysis_id}.zip"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/")
 async def root():

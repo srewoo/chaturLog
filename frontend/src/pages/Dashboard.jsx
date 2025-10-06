@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadLogFile, analyzeLog, generateTests, getAnalyses, getAnalysis } from '../utils/api';
+import { uploadLogFile, analyzeLog, generateTests, getAnalyses, getAnalysis, exportTests } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
+import { Progress } from '../components/ui/progress';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,8 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterModel, setFilterModel] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [progressStage, setProgressStage] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
   const navigate = useNavigate();
 
   const userEmail = localStorage.getItem('user_email');
@@ -85,34 +88,61 @@ export default function Dashboard() {
     }
 
     setLoading(true);
-    setUploadStatus('Uploading file...');
-
+    setProgressPercent(0);
+    
     try {
       // Step 1: Upload file
+      setProgressStage('Uploading file to server...');
+      setProgressPercent(10);
+      setUploadStatus('📤 Uploading file...');
+      
       const uploadResponse = await uploadLogFile(selectedFile);
       const analysisId = uploadResponse.analysis_id;
-      setUploadStatus('File uploaded. Starting AI analysis...');
+      setProgressPercent(25);
 
       // Step 2: Analyze with AI
+      setProgressStage(`Analyzing logs with ${aiModel}...`);
+      setProgressPercent(30);
+      setUploadStatus('🤖 AI is analyzing your log file...');
+      
       const analyzeResponse = await analyzeLog(analysisId, aiModel);
-      setUploadStatus('Analysis completed! Generating tests...');
+      setProgressPercent(60);
+      setProgressStage('Analysis complete! Extracting patterns...');
 
       // Step 3: Generate tests
+      setProgressStage(`Generating ${framework} test cases...`);
+      setProgressPercent(70);
+      setUploadStatus('🧪 Generating test cases...');
+      
       const testsResponse = await generateTests(analysisId, framework);
-      setUploadStatus('Test cases generated successfully!');
+      setProgressPercent(85);
 
       // Step 4: Load the complete analysis
+      setProgressStage('Finalizing results...');
+      setProgressPercent(90);
+      setUploadStatus('✅ Loading results...');
+      
       const fullAnalysis = await getAnalysis(analysisId);
       setCurrentAnalysis(fullAnalysis);
 
       // Reload analyses list
       await loadAnalyses();
+      
+      setProgressPercent(100);
+      setProgressStage('Complete!');
+      setUploadStatus(`✨ Success! Generated ${testsResponse.test_cases?.length || 0} test cases`);
 
-      // Reset file selection
-      setSelectedFile(null);
+      // Reset file selection after a short delay
+      setTimeout(() => {
+        setSelectedFile(null);
+        setProgressPercent(0);
+        setProgressStage('');
+      }, 2000);
     } catch (err) {
       console.error('Error:', err);
-      setUploadStatus(`Error: ${err.response?.data?.detail || err.message}`);
+      setProgressStage('');
+      setProgressPercent(0);
+      setUploadStatus(`❌ Error: ${err.response?.data?.detail || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -443,13 +473,48 @@ export default function Dashboard() {
                   )}
                 </Button>
 
+                {/* Progress Indicator */}
+                {loading && progressPercent > 0 && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium text-slate-700">
+                            {progressStage}
+                          </span>
+                          <span className="text-slate-600">{progressPercent}%</span>
+                        </div>
+                        <Progress value={progressPercent} className="h-2" />
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <div className="flex items-center gap-1">
+                            {progressPercent < 30 ? (
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                            ) : progressPercent < 70 ? (
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                            ) : progressPercent < 100 ? (
+                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            ) : (
+                              <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                            )}
+                            <span>
+                              {progressPercent < 30 ? 'Uploading' :
+                               progressPercent < 70 ? 'Analyzing' :
+                               progressPercent < 100 ? 'Generating Tests' : 'Complete'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Status Message */}
                 {uploadStatus && (
                   <div
                     className={`p-4 rounded-lg ${
-                      uploadStatus.includes('Error')
+                      uploadStatus.includes('Error') || uploadStatus.includes('❌')
                         ? 'bg-red-50 text-red-800'
-                        : uploadStatus.includes('success')
+                        : uploadStatus.includes('Success') || uploadStatus.includes('✨')
                         ? 'bg-green-50 text-green-800'
                         : 'bg-blue-50 text-blue-800'
                     }`}
@@ -508,10 +573,23 @@ export default function Dashboard() {
                 {currentAnalysis.test_cases && currentAnalysis.test_cases.length > 0 && (
                   <Card data-testid="test-cases-card">
                     <CardHeader>
-                      <CardTitle>Generated Test Cases</CardTitle>
-                      <CardDescription>
-                        {currentAnalysis.test_cases.length} test cases ready for download
-                      </CardDescription>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Generated Test Cases</CardTitle>
+                          <CardDescription>
+                            {currentAnalysis.test_cases.length} test cases ready for download
+                          </CardDescription>
+                        </div>
+                        <Button
+                          onClick={handleExportAll}
+                          variant="default"
+                          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                          data-testid="export-all-button"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Export All as ZIP
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">

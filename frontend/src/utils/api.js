@@ -70,4 +70,22 @@ export const getAnalysis = async (analysisId) => {
   return response.data;
 };
 
+export const exportTests = async (analysisId) => {
+  const response = await api.get(`/export/${analysisId}`, {
+    responseType: 'blob'
+  });
+  
+  // Create download link
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `chaturlog_tests_${analysisId}.zip`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+  
+  return { success: true };
+};
+
 export default api;
