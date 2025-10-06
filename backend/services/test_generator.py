@@ -112,7 +112,7 @@ Respond with a JSON array of test cases:
 """
         else:
             # Use default prompt with STRONG framework emphasis
-        prompt = f"""
+            prompt = f"""
 ⚠️ CRITICAL: Generate test cases EXCLUSIVELY for {framework.upper()} framework! ⚠️
 
 TARGET FRAMEWORK: {framework.upper()}
