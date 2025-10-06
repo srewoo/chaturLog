@@ -6,7 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
+import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink } from 'lucide-react';
 
 export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -164,6 +172,109 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center space-x-3">
               <span className="text-sm text-slate-600">{userEmail}</span>
+              
+              {/* Help Documentation Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="help-button"
+                  >
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Help
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel>Documentation</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://github.com/srewoo/chaturLog/blob/main/README.md" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Getting Started
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://github.com/srewoo/chaturLog/blob/main/SETUP_GUIDE.md" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Setup Guide
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://github.com/srewoo/chaturLog/blob/main/IMPROVEMENT_RECOMMENDATIONS.md" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Feature Roadmap
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>API Documentation</DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://platform.openai.com/docs" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      OpenAI API Docs
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://docs.anthropic.com" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      Anthropic API Docs
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://ai.google.dev/docs" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      Google AI Docs
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <a 
+                      href="https://github.com/srewoo/chaturLog/issues" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center cursor-pointer"
+                    >
+                      <HelpCircle className="h-4 w-4 mr-2" />
+                      Report an Issue
+                      <ExternalLink className="h-3 w-3 ml-auto" />
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button
                 variant="ghost"
                 size="sm"
