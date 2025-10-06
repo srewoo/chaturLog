@@ -1,0 +1,477 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { uploadLogFile, analyzeLog, generateTests, getAnalyses, getAnalysis } from '../utils/api';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Badge } from '../components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle } from 'lucide-react';
+
+export default function Dashboard() {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [aiModel, setAiModel] = useState('gpt-4o');
+  const [framework, setFramework] = useState('jest');
+  const [analyses, setAnalyses] = useState([]);
+  const [currentAnalysis, setCurrentAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const navigate = useNavigate();
+
+  const userEmail = localStorage.getItem('user_email');
+
+  useEffect(() => {
+    loadAnalyses();
+  }, []);
+
+  const loadAnalyses = async () => {
+    try {
+      const response = await getAnalyses();
+      setAnalyses(response.analyses || []);
+    } catch (err) {
+      console.error('Failed to load analyses:', err);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user_email');
+    navigate('/login');
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setSelectedFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadAndAnalyze = async () => {
+    if (!selectedFile) {
+      setUploadStatus('Please select a file first');
+      return;
+    }
+
+    setLoading(true);
+    setUploadStatus('Uploading file...');
+
+    try {
+      // Step 1: Upload file
+      const uploadResponse = await uploadLogFile(selectedFile);
+      const analysisId = uploadResponse.analysis_id;
+      setUploadStatus('File uploaded. Starting AI analysis...');
+
+      // Step 2: Analyze with AI
+      const analyzeResponse = await analyzeLog(analysisId, aiModel);
+      setUploadStatus('Analysis completed! Generating tests...');
+
+      // Step 3: Generate tests
+      const testsResponse = await generateTests(analysisId, framework);
+      setUploadStatus('Test cases generated successfully!');
+
+      // Step 4: Load the complete analysis
+      const fullAnalysis = await getAnalysis(analysisId);
+      setCurrentAnalysis(fullAnalysis);
+
+      // Reload analyses list
+      await loadAnalyses();
+
+      // Reset file selection
+      setSelectedFile(null);
+    } catch (err) {
+      console.error('Error:', err);
+      setUploadStatus(`Error: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAnalysisDetails = async (analysisId) => {
+    try {
+      const response = await getAnalysis(analysisId);
+      setCurrentAnalysis(response);
+    } catch (err) {
+      console.error('Failed to load analysis:', err);
+    }
+  };
+
+  const downloadTestCode = (testCase) => {
+    const blob = new Blob([testCase.test_code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `test_${testCase.framework}_${testCase.id}.${
+      testCase.framework === 'junit' ? 'java' : testCase.framework === 'pytest' ? 'py' : 'js'
+    }`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const getPriorityBadge = (priority) => {
+    const colors = {
+      high: 'bg-red-100 text-red-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      low: 'bg-green-100 text-green-800'
+    };
+    return colors[priority] || colors.medium;
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      pending: 'text-slate-500',
+      uploaded: 'text-blue-500',
+      analyzing: 'text-blue-600',
+      completed: 'text-green-600',
+      failed: 'text-red-600'
+    };
+    return colors[status] || colors.pending;
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Sparkles className="h-8 w-8 text-blue-600" />
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">ChaturLog</h1>
+                <p className="text-sm text-slate-600">AI-Powered Log Analysis</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-slate-600">{userEmail}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/settings')}
+                data-testid="settings-button"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                data-testid="logout-button"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Tabs defaultValue="upload" className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="upload" data-testid="upload-tab">
+              <Upload className="h-4 w-4 mr-2" />
+              Upload & Analyze
+            </TabsTrigger>
+            <TabsTrigger value="history" data-testid="history-tab">
+              <FileText className="h-4 w-4 mr-2" />
+              History
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Upload Tab */}
+          <TabsContent value="upload" className="space-y-6">
+            <Card data-testid="upload-card">
+              <CardHeader>
+                <CardTitle>Upload Log File</CardTitle>
+                <CardDescription>
+                  Upload your log file (.log, .txt, .json) up to 50MB for AI-powered analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* File Upload Area */}
+                <div
+                  className={`upload-area ${dragActive ? 'drag-active' : ''}`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('file-input')?.click()}
+                  data-testid="upload-dropzone"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Upload className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-lg font-medium text-slate-700 mb-2">
+                    {selectedFile ? selectedFile.name : 'Drop your log file here'}
+                  </p>
+                  <p className="text-sm text-slate-500 mb-4">
+                    or click to browse
+                  </p>
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".log,.txt,.json"
+                    className="hidden"
+                    id="file-input"
+                    data-testid="file-input"
+                    ref={(input) => {
+                      if (input) {
+                        window.fileInput = input;
+                      }
+                    }}
+                  />
+                  <Button 
+                    variant="outline" 
+                    className="cursor-pointer" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      document.getElementById('file-input')?.click();
+                    }}
+                    type="button"
+                    data-testid="select-file-button"
+                  >
+                    Select File
+                  </Button>
+                </div>
+
+                {/* Configuration */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">AI Model</label>
+                    <Select value={aiModel} onValueChange={setAiModel}>
+                      <SelectTrigger data-testid="ai-model-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gpt-4o">OpenAI GPT-4o</SelectItem>
+                        <SelectItem value="gpt-4o-mini">OpenAI GPT-4o Mini</SelectItem>
+                        <SelectItem value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</SelectItem>
+                        <SelectItem value="claude-4-sonnet-20250514">Claude 4 Sonnet</SelectItem>
+                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Test Framework</label>
+                    <Select value={framework} onValueChange={setFramework}>
+                      <SelectTrigger data-testid="framework-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="jest">Jest (JavaScript)</SelectItem>
+                        <SelectItem value="junit">JUnit (Java)</SelectItem>
+                        <SelectItem value="pytest">pytest (Python)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <Button
+                  onClick={handleUploadAndAnalyze}
+                  disabled={!selectedFile || loading}
+                  className="w-full"
+                  data-testid="analyze-button"
+                >
+                  {loading ? (
+                    <>
+                      <span className="spinner mr-2"></span>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Upload & Analyze
+                    </>
+                  )}
+                </Button>
+
+                {/* Status Message */}
+                {uploadStatus && (
+                  <div
+                    className={`p-4 rounded-lg ${
+                      uploadStatus.includes('Error')
+                        ? 'bg-red-50 text-red-800'
+                        : uploadStatus.includes('success')
+                        ? 'bg-green-50 text-green-800'
+                        : 'bg-blue-50 text-blue-800'
+                    }`}
+                    data-testid="status-message"
+                  >
+                    {uploadStatus}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Results Display */}
+            {currentAnalysis && (
+              <div className="space-y-6 fade-in">
+                {/* Patterns Card */}
+                {currentAnalysis.patterns && currentAnalysis.patterns.length > 0 && (
+                  <Card data-testid="patterns-card">
+                    <CardHeader>
+                      <CardTitle>Detected Patterns</CardTitle>
+                      <CardDescription>
+                        {currentAnalysis.patterns.length} patterns found in the log file
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {currentAnalysis.patterns.map((pattern, idx) => (
+                          <div
+                            key={pattern.id || idx}
+                            className="p-4 border border-slate-200 rounded-lg"
+                            data-testid={`pattern-${idx}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <Badge className={getPriorityBadge(pattern.severity)}>
+                                    {pattern.severity}
+                                  </Badge>
+                                  <span className="text-sm text-slate-600">
+                                    Type: {pattern.pattern_type}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-700">{pattern.description}</p>
+                              </div>
+                              <span className="text-sm font-medium text-slate-500">
+                                x{pattern.frequency}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Test Cases Card */}
+                {currentAnalysis.test_cases && currentAnalysis.test_cases.length > 0 && (
+                  <Card data-testid="test-cases-card">
+                    <CardHeader>
+                      <CardTitle>Generated Test Cases</CardTitle>
+                      <CardDescription>
+                        {currentAnalysis.test_cases.length} test cases ready for download
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {currentAnalysis.test_cases.map((testCase, idx) => (
+                          <div
+                            key={testCase.id || idx}
+                            className="border border-slate-200 rounded-lg overflow-hidden"
+                            data-testid={`test-case-${idx}`}
+                          >
+                            <div className="p-4 bg-slate-50 border-b border-slate-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Badge variant="outline">{testCase.framework}</Badge>
+                                    <Badge className={getPriorityBadge(testCase.priority)}>
+                                      {testCase.priority} priority
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-slate-700">{testCase.description}</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => downloadTestCode(testCase)}
+                                  data-testid={`download-test-${idx}`}
+                                >
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Download
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="p-4">
+                              <pre className="test-code">{testCase.test_code}</pre>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* History Tab */}
+          <TabsContent value="history" data-testid="history-content">
+            <Card>
+              <CardHeader>
+                <CardTitle>Analysis History</CardTitle>
+                <CardDescription>
+                  View and manage your previous log analyses
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                    <p className="text-slate-500">No analyses yet. Upload a log file to get started!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {analyses.map((analysis) => (
+                      <div
+                        key={analysis.id}
+                        className="p-4 border border-slate-200 rounded-lg card-hover cursor-pointer"
+                        onClick={() => loadAnalysisDetails(analysis.id)}
+                        data-testid={`analysis-${analysis.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <Code className="h-4 w-4 text-slate-400" />
+                              <span className="font-medium text-slate-900">{analysis.filename}</span>
+                            </div>
+                            <div className="flex items-center space-x-3 text-sm text-slate-600">
+                              <span>Model: {analysis.ai_model || 'N/A'}</span>
+                              <span>•</span>
+                              <span>
+                                {new Date(analysis.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge className={getStatusColor(analysis.status)}>
+                            {analysis.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  );
+}

@@ -1,0 +1,322 @@
+# ChaturLog - Comprehensive .gitignore
+
+# ==================== Environment Variables ====================
+# CRITICAL: Never commit API keys or secrets!
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+*.env
+.env.*
+!.env.example
+!.env.template
+
+# API Keys and Credentials
+*token.json*
+*credentials.json*
+*api_keys*
+*.key
+*.pem
+
+# ==================== Backend (Python/FastAPI) ====================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.Python
+
+# PyInstaller
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+chaturlog.db
+*.db-journal
+
+# Uploaded Files
+backend/uploads/*
+!backend/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# Log Files
+*.log
+backend/*.log
+backend/logs/*
+server.log
+nohup.out
+
+# ==================== Frontend (React) ====================
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+/coverage
+/test-results/
+playwright-report/
+
+# Production builds
+/build
+/dist
+dist/
+frontend/build/
+
+# Next.js (if migrating later)
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Miscellaneous
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# ==================== IDE & Editors ====================
+
+# VSCode
+.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs (PyCharm, WebStorm, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==================== System Files ====================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ==================== Temporary & Cache Files ====================
+
+# General
+*.tmp
+*.temp
+*.cache
+.cache/
+tmp/
+temp/
+
+# Package managers
+.npm
+.eslintcache
+.stylelintcache
+
+# Parcel cache
+.parcel-cache
+
+# ==================== Deployment & CI/CD ====================
+
+.vercel
+.netlify
+.firebase/
+.serverless/
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# ==================== Documentation & Notes ====================
+
+# Ignore local notes (but keep main docs)
+notes/
+scratch/
+TODO.local.md
+NOTES.md
+
+# ==================== Large Files & Archives ====================
+
+*.zip
+*.tar.gz
+*.tar
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+*.pack
+*.deb
+*.rpm
+*.dmg
+*.iso
+*.dylib
+
+# Large media files (keep samples if needed)
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+*.wav
+*.mp3
+
+# ==================== Project Specific ====================
+
+# Generated test result files
+test_result.md
+test_results/
+
+# Generated reports
+reports/
+*.report.json
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Lock files (keep yarn.lock, package-lock.json for consistency)
+# Uncomment if you want to ignore lock files:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ==================== Optional: Keep These ====================
+# These files should be committed:
+# - README.md
+# - SETUP_GUIDE.md
+# - COMPLETE_APPLICATION_ANALYSIS.md
+# - ENV_SETUP.md
+# - IMPLEMENTATION_CHANGES.md
+# - requirements.txt
+# - package.json
+# - .env.example (templates only, never actual .env files!)

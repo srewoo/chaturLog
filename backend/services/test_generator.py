@@ -1,0 +1,252 @@
+import os
+import re
+import json
+from typing import Dict, List, Any
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class TestGenerator:
+    """Generate test cases from log analysis using direct API calls"""
+    
+    def __init__(self, ai_model: str = "gpt-4o", api_key: str = None):
+        self.ai_model = ai_model
+        self.api_key = api_key
+        
+        # Determine provider and model
+        if "gpt" in ai_model or "openai" in ai_model:
+            self.provider = "openai"
+            self.model_name = ai_model if "gpt" in ai_model else "gpt-4o"
+        elif "claude" in ai_model or "anthropic" in ai_model:
+            self.provider = "anthropic"
+            self.model_name = ai_model if "claude" in ai_model else "claude-3-7-sonnet-20250219"
+        elif "gemini" in ai_model:
+            self.provider = "google"
+            self.model_name = ai_model if "gemini" in ai_model else "gemini-2.0-flash-exp"
+        else:
+            self.provider = "openai"
+            self.model_name = "gpt-4o"
+    
+    async def generate_tests(self, analysis_data: Dict[str, Any], framework: str) -> List[Dict[str, Any]]:
+        """
+        Generate test cases based on analysis data
+        framework: 'jest', 'junit', or 'pytest'
+        """
+        # Create test generation prompt
+        framework_templates = {
+            "jest": self._get_jest_template(),
+            "junit": self._get_junit_template(),
+            "pytest": self._get_pytest_template()
+        }
+        
+        template = framework_templates.get(framework, framework_templates["jest"])
+        
+        prompt = f"""
+Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
+
+ANALYSIS DATA:
+{str(analysis_data)}
+
+Requirements:
+1. Generate {framework.upper()} test cases for identified errors and API endpoints
+2. Include proper imports and setup/teardown
+3. Add assertions for error conditions, status codes, and response validation
+4. Prioritize tests by risk score (critical errors first)
+5. Make tests executable and production-ready
+
+{template}
+
+Generate at least 3-5 test cases covering:
+- Error scenarios from logs
+- API endpoint testing
+- Performance validation
+- Edge cases
+
+Respond with a JSON array of test cases:
+[
+  {{
+    "description": "Test description",
+    "priority": "high|medium|low",
+    "risk_score": 0.0-1.0,
+    "test_code": "Complete executable test code"
+  }}
+]
+"""
+        
+        try:
+            if self.provider == "openai":
+                response = await self._call_openai(prompt, framework)
+            elif self.provider == "anthropic":
+                response = await self._call_anthropic(prompt, framework)
+            elif self.provider == "google":
+                response = await self._call_google(prompt, framework)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+            
+            # Parse test cases from response
+            test_cases = self._parse_test_response(response, framework)
+            
+            return test_cases
+        except Exception as e:
+            # Return a sample test case on error
+            return [{
+                "description": f"Sample {framework} test - Error during generation: {str(e)}",
+                "priority": "low",
+                "risk_score": 0.1,
+                "test_code": self._get_sample_test(framework)
+            }]
+    
+    async def _call_openai(self, prompt: str, framework: str) -> str:
+        """Call OpenAI API directly"""
+        import openai
+        
+        client = openai.AsyncOpenAI(api_key=self.api_key)
+        
+        response = await client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": f"You are an expert test automation engineer specializing in {framework}."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=4000
+        )
+        
+        return response.choices[0].message.content
+    
+    async def _call_anthropic(self, prompt: str, framework: str) -> str:
+        """Call Anthropic API directly"""
+        import anthropic
+        
+        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        
+        response = await client.messages.create(
+            model=self.model_name,
+            max_tokens=4000,
+            system=f"You are an expert test automation engineer specializing in {framework}.",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        return response.content[0].text
+    
+    async def _call_google(self, prompt: str, framework: str) -> str:
+        """Call Google Gemini API directly"""
+        import google.generativeai as genai
+        
+        genai.configure(api_key=self.api_key)
+        model = genai.GenerativeModel(
+            model_name=self.model_name,
+            system_instruction=f"You are an expert test automation engineer specializing in {framework}."
+        )
+        
+        response = await model.generate_content_async(prompt)
+        return response.text
+    
+    def _parse_test_response(self, response: str, framework: str) -> List[Dict[str, Any]]:
+        """Parse AI response into test cases"""
+        try:
+            # Try to extract JSON array from response
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                test_cases = json.loads(json_match.group())
+                return test_cases if isinstance(test_cases, list) else [test_cases]
+            else:
+                # Fallback: create sample test
+                return [{
+                    "description": f"Generated {framework} test from analysis",
+                    "priority": "medium",
+                    "risk_score": 0.5,
+                    "test_code": self._extract_code_blocks(response, framework)
+                }]
+        except json.JSONDecodeError:
+            return [{
+                "description": f"Generated {framework} test",
+                "priority": "medium",
+                "risk_score": 0.5,
+                "test_code": self._extract_code_blocks(response, framework)
+            }]
+    
+    def _extract_code_blocks(self, text: str, framework: str) -> str:
+        """Extract code blocks from markdown response"""
+        code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', text, re.DOTALL)
+        if code_blocks:
+            return code_blocks[0]
+        return self._get_sample_test(framework)
+    
+    def _get_jest_template(self) -> str:
+        return """
+JEST Template Example:
+```javascript
+import request from 'supertest';
+import { app } from '../src/app';
+
+describe('API Tests', () => {
+  it('should handle error scenario', async () => {
+    const response = await request(app).get('/api/endpoint');
+    expect(response.status).toBe(200);
+  });
+});
+```
+"""
+    
+    def _get_junit_template(self) -> str:
+        return """
+JUNIT Template Example:
+```java
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.equalTo;
+import org.junit.Test;
+
+public class ApiTests {
+  @Test
+  public void testErrorScenario() {
+    given()
+      .when().get("/api/endpoint")
+      .then().statusCode(200);
+  }
+}
+```
+"""
+    
+    def _get_pytest_template(self) -> str:
+        return """
+PYTEST Template Example:
+```python
+import pytest
+import requests
+
+def test_error_scenario():
+    response = requests.get('http://localhost:8000/api/endpoint')
+    assert response.status_code == 200
+```
+"""
+    
+    def _get_sample_test(self, framework: str) -> str:
+        """Return a sample test case"""
+        samples = {
+            "jest": """import request from 'supertest';
+
+describe('Sample Test', () => {
+  it('should return 200', async () => {
+    // Add your test logic here
+    expect(true).toBe(true);
+  });
+});""",
+            "junit": """import org.junit.Test;
+import static org.junit.Assert.*;
+
+public class SampleTest {
+  @Test
+  public void testSample() {
+    assertTrue(true);
+  }
+}""",
+            "pytest": """import pytest
+
+def test_sample():
+    assert True
+"""
+        }
+        return samples.get(framework, samples["jest"])
