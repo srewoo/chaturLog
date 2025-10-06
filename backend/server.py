@@ -526,9 +526,27 @@ async def analyze_logs(
         # Get user's API key
         api_key = get_user_api_key(user_id, request.ai_model)
         
+        # Get user's default custom prompt if exists
+        cursor.execute(
+            "SELECT system_prompt, analysis_prompt FROM custom_prompts WHERE user_id = ? AND is_default = 1",
+            (user_id,)
+        )
+        custom_prompt_row = cursor.fetchone()
+        
+        system_prompt = None
+        analysis_prompt = None
+        if custom_prompt_row:
+            system_prompt = custom_prompt_row["system_prompt"]
+            analysis_prompt = custom_prompt_row["analysis_prompt"]
+        
         # Analyze with AI
         analyzer = LogAnalyzer(ai_model=request.ai_model, api_key=api_key)
-        result = await analyzer.analyze_logs(log_content, analysis["filename"])
+        result = await analyzer.analyze_logs(
+            log_content, 
+            analysis["filename"],
+            custom_prompt=analysis_prompt,
+            system_prompt=system_prompt
+        )
         
         if result["success"]:
             # Store patterns
@@ -617,9 +635,27 @@ async def generate_tests(
         # Get user's API key
         api_key = get_user_api_key(user_id, analysis["ai_model"])
         
+        # Get user's default custom prompt if exists
+        cursor.execute(
+            "SELECT system_prompt, test_generation_prompt FROM custom_prompts WHERE user_id = ? AND is_default = 1",
+            (user_id,)
+        )
+        custom_prompt_row = cursor.fetchone()
+        
+        system_prompt = None
+        test_gen_prompt = None
+        if custom_prompt_row:
+            system_prompt = custom_prompt_row["system_prompt"]
+            test_gen_prompt = custom_prompt_row["test_generation_prompt"]
+        
         # Generate tests
         generator = TestGenerator(ai_model=analysis["ai_model"], api_key=api_key)
-        test_cases = await generator.generate_tests(analysis_data, request.framework)
+        test_cases = await generator.generate_tests(
+            analysis_data, 
+            request.framework,
+            custom_prompt=test_gen_prompt,
+            system_prompt=system_prompt
+        )
         
         # Validate and store test cases
         validator = TestValidator()

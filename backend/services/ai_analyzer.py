@@ -27,12 +27,37 @@ class LogAnalyzer:
             self.provider = "openai"
             self.model_name = "gpt-4o"
     
-    async def analyze_logs(self, log_content: str, filename: str) -> Dict[str, Any]:
+    async def analyze_logs(self, log_content: str, filename: str, custom_prompt: str = None, system_prompt: str = None) -> Dict[str, Any]:
         """
         Analyze log file and extract patterns, errors, and insights
+        
+        Args:
+            log_content: The log file content to analyze
+            filename: Name of the log file
+            custom_prompt: Optional custom analysis prompt
+            system_prompt: Optional system prompt to define AI's role
         """
         # Create analysis prompt
-        prompt = f"""
+        if custom_prompt:
+            # Use custom prompt with log content
+            prompt = f"""
+{custom_prompt}
+
+LOG FILE: {filename}
+===
+{log_content[:10000]}  # Limit to first 10k characters for analysis
+===
+
+Format your response as a structured JSON with these keys:
+- error_patterns: [{{type, description, severity, frequency}}]
+- api_endpoints: [{{method, path, status_codes, issues}}]
+- performance_issues: [{{issue, impact, frequency}}]
+- business_impact: {{severity, affected_users, description}}
+- test_scenarios: [{{scenario, priority, framework_hint}}]
+"""
+        else:
+            # Use default prompt
+            prompt = f"""
 Analyze the following log file and provide a comprehensive analysis:
 
 LOG FILE: {filename}
@@ -64,12 +89,16 @@ Format your response as a structured JSON with these keys:
 """
         
         try:
+            # Use custom or default system prompt
+            if not system_prompt:
+                system_prompt = "You are an expert log analyzer. Analyze logs and identify errors, patterns, performance issues, and API endpoints."
+            
             if self.provider == "openai":
-                response = await self._call_openai(prompt)
+                response = await self._call_openai(prompt, system_prompt)
             elif self.provider == "anthropic":
-                response = await self._call_anthropic(prompt)
+                response = await self._call_anthropic(prompt, system_prompt)
             elif self.provider == "google":
-                response = await self._call_google(prompt)
+                response = await self._call_google(prompt, system_prompt)
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
             
@@ -88,7 +117,7 @@ Format your response as a structured JSON with these keys:
                 "ai_model": self.ai_model
             }
     
-    async def _call_openai(self, prompt: str) -> str:
+    async def _call_openai(self, prompt: str, system_prompt: str) -> str:
         """Call OpenAI API directly"""
         import openai
         
@@ -97,7 +126,7 @@ Format your response as a structured JSON with these keys:
         response = await client.chat.completions.create(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": "You are an expert log analyzer. Analyze logs and identify errors, patterns, performance issues, and API endpoints."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
@@ -106,7 +135,7 @@ Format your response as a structured JSON with these keys:
         
         return response.choices[0].message.content
     
-    async def _call_anthropic(self, prompt: str) -> str:
+    async def _call_anthropic(self, prompt: str, system_prompt: str) -> str:
         """Call Anthropic API directly"""
         import anthropic
         
@@ -115,7 +144,7 @@ Format your response as a structured JSON with these keys:
         response = await client.messages.create(
             model=self.model_name,
             max_tokens=4000,
-            system="You are an expert log analyzer. Analyze logs and identify errors, patterns, performance issues, and API endpoints.",
+            system=system_prompt,
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -123,14 +152,14 @@ Format your response as a structured JSON with these keys:
         
         return response.content[0].text
     
-    async def _call_google(self, prompt: str) -> str:
+    async def _call_google(self, prompt: str, system_prompt: str) -> str:
         """Call Google Gemini API directly"""
         import google.generativeai as genai
         
         genai.configure(api_key=self.api_key)
         model = genai.GenerativeModel(
             model_name=self.model_name,
-            system_instruction="You are an expert log analyzer. Analyze logs and identify errors, patterns, performance issues, and API endpoints."
+            system_instruction=system_prompt
         )
         
         response = await model.generate_content_async(prompt)

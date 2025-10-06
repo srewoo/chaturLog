@@ -27,10 +27,15 @@ class TestGenerator:
             self.provider = "openai"
             self.model_name = "gpt-4o"
     
-    async def generate_tests(self, analysis_data: Dict[str, Any], framework: str) -> List[Dict[str, Any]]:
+    async def generate_tests(self, analysis_data: Dict[str, Any], framework: str, custom_prompt: str = None, system_prompt: str = None) -> List[Dict[str, Any]]:
         """
         Generate test cases based on analysis data
-        framework: 'jest', 'junit', or 'pytest'
+        
+        Args:
+            analysis_data: Analysis results from log analysis
+            framework: Test framework ('jest', 'junit', 'pytest', 'mocha', 'cypress', 'rspec')
+            custom_prompt: Optional custom test generation prompt
+            system_prompt: Optional system prompt to define AI's role
         """
         # Create test generation prompt
         framework_templates = {
@@ -44,7 +49,31 @@ class TestGenerator:
         
         template = framework_templates.get(framework, framework_templates["jest"])
         
-        prompt = f"""
+        if custom_prompt:
+            # Use custom prompt
+            prompt = f"""
+{custom_prompt}
+
+ANALYSIS DATA:
+{str(analysis_data)}
+
+FRAMEWORK: {framework.upper()}
+
+{template}
+
+Respond with a JSON array of test cases:
+[
+  {{
+    "description": "Test description",
+    "priority": "high|medium|low",
+    "risk_score": 0.0-1.0,
+    "test_code": "Complete executable test code"
+  }}
+]
+"""
+        else:
+            # Use default prompt
+            prompt = f"""
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
 
 ANALYSIS DATA:
@@ -77,12 +106,16 @@ Respond with a JSON array of test cases:
 """
         
         try:
+            # Use custom or default system prompt
+            if not system_prompt:
+                system_prompt = f"You are an expert test automation engineer specializing in {framework}."
+            
             if self.provider == "openai":
-                response = await self._call_openai(prompt, framework)
+                response = await self._call_openai(prompt, system_prompt)
             elif self.provider == "anthropic":
-                response = await self._call_anthropic(prompt, framework)
+                response = await self._call_anthropic(prompt, system_prompt)
             elif self.provider == "google":
-                response = await self._call_google(prompt, framework)
+                response = await self._call_google(prompt, system_prompt)
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
             
@@ -99,7 +132,7 @@ Respond with a JSON array of test cases:
                 "test_code": self._get_sample_test(framework)
             }]
     
-    async def _call_openai(self, prompt: str, framework: str) -> str:
+    async def _call_openai(self, prompt: str, system_prompt: str) -> str:
         """Call OpenAI API directly"""
         import openai
         
@@ -108,7 +141,7 @@ Respond with a JSON array of test cases:
         response = await client.chat.completions.create(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": f"You are an expert test automation engineer specializing in {framework}."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
@@ -117,7 +150,7 @@ Respond with a JSON array of test cases:
         
         return response.choices[0].message.content
     
-    async def _call_anthropic(self, prompt: str, framework: str) -> str:
+    async def _call_anthropic(self, prompt: str, system_prompt: str) -> str:
         """Call Anthropic API directly"""
         import anthropic
         
@@ -126,7 +159,7 @@ Respond with a JSON array of test cases:
         response = await client.messages.create(
             model=self.model_name,
             max_tokens=4000,
-            system=f"You are an expert test automation engineer specializing in {framework}.",
+            system=system_prompt,
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -134,14 +167,14 @@ Respond with a JSON array of test cases:
         
         return response.content[0].text
     
-    async def _call_google(self, prompt: str, framework: str) -> str:
+    async def _call_google(self, prompt: str, system_prompt: str) -> str:
         """Call Google Gemini API directly"""
         import google.generativeai as genai
         
         genai.configure(api_key=self.api_key)
         model = genai.GenerativeModel(
             model_name=self.model_name,
-            system_instruction=f"You are an expert test automation engineer specializing in {framework}."
+            system_instruction=system_prompt
         )
         
         response = await model.generate_content_async(prompt)

@@ -88,4 +88,30 @@ export const exportTests = async (analysisId) => {
   return { success: true };
 };
 
+// Custom Prompts APIs
+export const getPrompts = async () => {
+  const response = await api.get('/prompts');
+  return response.data;
+};
+
+export const getPrompt = async (promptId) => {
+  const response = await api.get(`/prompts/${promptId}`);
+  return response.data;
+};
+
+export const createPrompt = async (promptData) => {
+  const response = await api.post('/prompts', promptData);
+  return response.data;
+};
+
+export const updatePrompt = async (promptId, promptData) => {
+  const response = await api.put(`/prompts/${promptId}`, promptData);
+  return response.data;
+};
+
+export const deletePrompt = async (promptId) => {
+  const response = await api.delete(`/prompts/${promptId}`);
+  return response.data;
+};
+
 export default api;
