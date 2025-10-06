@@ -76,6 +76,13 @@ Generate tests that:
 TARGET FRAMEWORK: {framework.upper()}
 LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "Unknown"}
 
+IMPORTANT INSTRUCTIONS:
+❌ DO NOT return template code with placeholders like "Add your test logic here"
+❌ DO NOT return generic examples with "expect(true).toBe(true)"
+✅ DO generate REAL, EXECUTABLE tests based on the actual log analysis data below
+✅ DO write tests that validate the specific errors, patterns, and issues found in the logs
+✅ DO create meaningful assertions that test actual conditions from the log file
+
 {custom_prompt}
 
 {context_instructions}
@@ -85,9 +92,13 @@ ANALYSIS DATA:
 
 FRAMEWORK: {framework.upper()}
 
+REFERENCE TEMPLATE (use structure but fill with REAL test logic):
 {template}
 
-⚠️ REMINDER: All test_code MUST be valid {framework.upper()} syntax! ⚠️
+⚠️ FINAL CHECKS:
+1. Are tests based on ACTUAL log data, not generic examples?
+2. Is code valid {framework.upper()} syntax?
+3. Would these catch the REAL issues from logs?
 
 Respond with a JSON array of test cases:
 [
@@ -107,6 +118,13 @@ Respond with a JSON array of test cases:
 TARGET FRAMEWORK: {framework.upper()}
 LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "Unknown"}
 
+IMPORTANT INSTRUCTIONS:
+❌ DO NOT return template code with placeholders like "Add your test logic here"
+❌ DO NOT return generic examples with "expect(true).toBe(true)"
+✅ DO generate REAL, EXECUTABLE tests based on the actual log analysis data below
+✅ DO write tests that validate the specific errors, patterns, and issues found in the logs
+✅ DO create meaningful assertions that test actual conditions from the log file
+
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
 
 {context_instructions}
@@ -115,12 +133,13 @@ ANALYSIS DATA:
 {str(analysis_data)}
 
 Requirements:
-1. Generate {framework.upper()} test cases for identified errors and API endpoints
+1. Generate {framework.upper()} test cases for identified errors and API endpoints FROM THE ANALYSIS DATA
 2. Include proper imports and setup/teardown (matching project structure if context provided)
-3. Add assertions for error conditions, status codes, and response validation
+3. Add assertions for ACTUAL error conditions found in logs, NOT generic examples
 4. Prioritize tests by risk score (critical errors first)
-5. Make tests executable and production-ready
+5. Make tests executable and production-ready with REAL test logic
 6. Use project-specific patterns and conventions if context is available
+7. EVERY test MUST validate something SPECIFIC from the log analysis
 
 CODE FORMATTING STANDARDS (CRITICAL):
 - Add comprehensive docstrings explaining purpose, parameters, and expected behavior
@@ -135,15 +154,20 @@ CODE FORMATTING STANDARDS (CRITICAL):
 - Follow PEP 8 (Python) or Airbnb style guide (JavaScript)
 - Structure: Imports → Constants → Fixtures/Setup → Test Classes → Helper Functions
 
+REFERENCE TEMPLATE (use this structure but fill with REAL test logic):
 {template}
 
 Generate at least 3-5 test cases covering:
-- Error scenarios from logs
-- API endpoint testing
-- Performance validation
-- Edge cases
+- Specific error scenarios from logs (e.g., if log shows circular reference, test for that)
+- Specific API endpoints mentioned in logs (not generic /api/endpoint)
+- Specific performance issues found (not generic performance tests)
+- Edge cases related to the actual errors found
 
-⚠️ REMINDER: All test_code MUST be valid {framework.upper()} syntax in {"JavaScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "appropriate language"}! ⚠️
+⚠️ FINAL CHECKS BEFORE RESPONDING:
+1. Does each test validate something SPECIFIC from the analysis data?
+2. Are assertions based on ACTUAL log patterns, not generic examples?
+3. Is the code valid {framework.upper()} syntax in {"JavaScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "appropriate language"}?
+4. Would these tests catch the ACTUAL issues found in the logs?
 
 Respond with a JSON array of test cases:
 [
