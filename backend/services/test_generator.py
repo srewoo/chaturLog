@@ -71,6 +71,11 @@ Generate tests that:
         if custom_prompt:
             # Use custom prompt
             prompt = f"""
+⚠️ CRITICAL: Generate test cases EXCLUSIVELY for {framework.upper()} framework! ⚠️
+
+TARGET FRAMEWORK: {framework.upper()}
+LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "Unknown"}
+
 {custom_prompt}
 
 {context_instructions}
@@ -81,6 +86,8 @@ ANALYSIS DATA:
 FRAMEWORK: {framework.upper()}
 
 {template}
+
+⚠️ REMINDER: All test_code MUST be valid {framework.upper()} syntax! ⚠️
 
 Respond with a JSON array of test cases:
 [
@@ -93,8 +100,13 @@ Respond with a JSON array of test cases:
 ]
 """
         else:
-            # Use default prompt
-            prompt = f"""
+            # Use default prompt with STRONG framework emphasis
+        prompt = f"""
+⚠️ CRITICAL: Generate test cases EXCLUSIVELY for {framework.upper()} framework! ⚠️
+
+TARGET FRAMEWORK: {framework.upper()}
+LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "Unknown"}
+
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
 
 {context_instructions}
@@ -131,6 +143,8 @@ Generate at least 3-5 test cases covering:
 - Performance validation
 - Edge cases
 
+⚠️ REMINDER: All test_code MUST be valid {framework.upper()} syntax in {"JavaScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "appropriate language"}! ⚠️
+
 Respond with a JSON array of test cases:
 [
   {{
@@ -143,9 +157,25 @@ Respond with a JSON array of test cases:
 """
         
         try:
-            # Use custom or default system prompt
+            # Use custom or default system prompt with EXPLICIT framework specification
             if not system_prompt:
-                system_prompt = f"You are an expert test automation engineer specializing in {framework}."
+                system_prompt = f"""You are an expert test automation engineer specializing EXCLUSIVELY in {framework.upper()}.
+
+CRITICAL REQUIREMENTS:
+- You MUST generate {framework.upper()} tests ONLY
+- DO NOT use Python/pytest syntax if framework is Jest/Mocha/Cypress (JavaScript)
+- DO NOT use JavaScript syntax if framework is pytest (Python)
+- DO NOT use Java syntax if framework is not JUnit
+- DO NOT mix frameworks or languages
+- The test code MUST be executable in the {framework.upper()} framework
+
+If the framework is:
+- jest/mocha/cypress: Use JavaScript/TypeScript with appropriate testing library
+- pytest: Use Python with pytest syntax
+- junit: Use Java with JUnit annotations
+- rspec: Use Ruby with RSpec syntax
+
+VERIFY before responding: Does your test code match the {framework.upper()} framework?"""
             
             if self.provider == "openai":
                 response = await self._call_openai(prompt, system_prompt)
@@ -217,6 +247,73 @@ Respond with a JSON array of test cases:
         response = await model.generate_content_async(prompt)
         return response.text
     
+    def _validate_framework_match(self, test_code: str, framework: str) -> bool:
+        """Validate that the test code matches the expected framework"""
+        framework_lower = framework.lower()
+        
+        # Framework-specific validation patterns
+        validation_patterns = {
+            'jest': [
+                (r'import.*from.*[\'"]jest[\'"]', True),  # Jest imports
+                (r'describe\s*\(', True),  # Describe blocks
+                (r'(test|it)\s*\(', True),  # Test blocks
+                (r'expect\s*\(', True),  # Assertions
+                (r'import\s+pytest', False),  # Should NOT have pytest
+                (r'@pytest', False),  # Should NOT have pytest decorators
+            ],
+            'mocha': [
+                (r'describe\s*\(', True),
+                (r'it\s*\(', True),
+                (r'(expect|assert)', True),
+                (r'import\s+pytest', False),
+                (r'@pytest', False),
+            ],
+            'cypress': [
+                (r'cy\.', True),  # Cypress commands
+                (r'describe\s*\(', True),
+                (r'it\s*\(', True),
+                (r'import\s+pytest', False),
+                (r'@pytest', False),
+            ],
+            'pytest': [
+                (r'import\s+pytest', True),  # Pytest imports
+                (r'def\s+test_', True),  # Test functions
+                (r'@pytest', True),  # Pytest decorators (optional but common)
+                (r'describe\s*\(', False),  # Should NOT have JS describe
+                (r'it\s*\(', False),  # Should NOT have JS it
+            ],
+            'junit': [
+                (r'@Test', True),  # JUnit annotations
+                (r'import.*org\.junit', True),  # JUnit imports
+                (r'public\s+(void|class)', True),  # Java syntax
+                (r'import\s+pytest', False),
+                (r'describe\s*\(', False),
+            ],
+            'rspec': [
+                (r'describe\s+[\'"]', True),  # RSpec describe
+                (r'it\s+[\'"]', True),  # RSpec it
+                (r'expect\s*\(', True),  # RSpec expectations
+                (r'import\s+pytest', False),
+                (r'import.*from', False),  # Should NOT have JS imports
+            ]
+        }
+        
+        if framework_lower not in validation_patterns:
+            return True  # Unknown framework, skip validation
+        
+        patterns = validation_patterns[framework_lower]
+        for pattern, should_match in patterns:
+            has_match = bool(re.search(pattern, test_code, re.MULTILINE | re.IGNORECASE))
+            if should_match and not has_match:
+                # Required pattern not found
+                return False
+            if not should_match and has_match:
+                # Forbidden pattern found (wrong framework)
+                print(f"⚠️ WARNING: Found wrong framework pattern '{pattern}' in {framework} test code")
+                return False
+        
+        return True
+    
     def _parse_test_response(self, response: str, framework: str) -> List[Dict[str, Any]]:
         """Parse AI response into test cases"""
         try:
@@ -224,7 +321,22 @@ Respond with a JSON array of test cases:
             json_match = re.search(r'\[.*\]', response, re.DOTALL)
             if json_match:
                 test_cases = json.loads(json_match.group())
-                return test_cases if isinstance(test_cases, list) else [test_cases]
+                test_cases = test_cases if isinstance(test_cases, list) else [test_cases]
+                
+                # Validate each test case matches the framework
+                validated_cases = []
+                for tc in test_cases:
+                    test_code = tc.get('test_code', '')
+                    if self._validate_framework_match(test_code, framework):
+                        validated_cases.append(tc)
+                    else:
+                        print(f"⚠️ Rejected test case: Framework mismatch (expected {framework})")
+                        # Try to add a warning to the test case
+                        tc['description'] = f"⚠️ FRAMEWORK MISMATCH - {tc.get('description', 'Test')}"
+                        tc['test_code'] = f"// ERROR: Generated code does not match {framework} framework\n// Please regenerate tests\n\n{test_code}"
+                        validated_cases.append(tc)
+                
+                return validated_cases if validated_cases else test_cases
             else:
                 # Fallback: create sample test
                 return [{
@@ -286,7 +398,7 @@ describe('[Feature/Component] Tests', () => {
         .send(testData);
 
       // Assert: Verify results
-      expect(response.status).toBe(200);
+    expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('data');
     });
 
