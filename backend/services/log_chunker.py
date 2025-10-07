@@ -30,10 +30,10 @@ class LogChunker:
     - Incremental processing (resume from last chunk)
     """
     
-    def __init__(self, chunk_size: int = 10000):
+    def __init__(self, chunk_size: int = 5000):
         """
         Args:
-            chunk_size: Characters per chunk (~2.5k tokens, safe for AI)
+            chunk_size: Characters per chunk (~1.25k tokens, safer for AI context limits)
         """
         self.chunk_size = chunk_size
         self.timestamp_patterns = [
@@ -305,31 +305,23 @@ class ChunkSummarizer:
                 'line_range': (int, int)
             }
         """
-        prompt = f"""
-Analyze this log chunk and provide a concise summary:
+        prompt = f"""Analyze log chunk {chunk['chunk_id']} (lines {chunk['start_line']}-{chunk['end_line']}):
 
-CHUNK ID: {chunk['chunk_id']}
-LINES: {chunk['start_line']}-{chunk['end_line']}
-TIME RANGE: {chunk['timestamp_range'][0]} to {chunk['timestamp_range'][1]}
-
-LOG CONTENT:
 ```
-{chunk['content']}
+{chunk['content'][:4000]}
 ```
 
-Provide a JSON response with:
+Return JSON:
 {{
-  "summary": "Brief overview of what happened in this chunk",
-  "errors_found": [{{"type": "error type", "description": "what happened", "severity": "high/medium/low", "line": 123}}],
-  "api_calls": [{{"method": "GET", "endpoint": "/api/users", "status": 200, "count": 5}}],
-  "performance_issues": [{{"issue": "slow query", "impact": "2s delay", "line": 456}}],
-  "key_patterns": ["pattern 1", "pattern 2"],
+  "summary": "Brief overview",
+  "errors_found": [{{"type": "error", "description": "what happened", "severity": "high/medium/low"}}],
+  "api_calls": [{{"method": "GET", "endpoint": "/path", "status": 200}}],
+  "performance_issues": [{{"issue": "slow query", "impact": "2s"}}],
+  "key_patterns": ["pattern"],
   "severity": "critical/high/medium/low/info"
 }}
 
-Focus on: errors, API endpoints, performance issues, unusual patterns.
-Be concise - this is one chunk of many.
-"""
+Focus on errors, APIs, performance. Be concise."""
         
         try:
             if self.provider == "openai":

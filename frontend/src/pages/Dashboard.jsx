@@ -23,8 +23,8 @@ import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircl
 export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
-  const [aiModel, setAiModel] = useState('gpt-4o');
-  const [framework, setFramework] = useState('pytest');
+  const [aiModel, setAiModel] = useState('gpt-4o-mini');
+  const [framework, setFramework] = useState('test-case');
   const [analyses, setAnalyses] = useState([]);
   const [currentAnalysis, setCurrentAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -209,6 +209,15 @@ export default function Dashboard() {
       setUploadStatus('🤖 AI is analyzing your log file...');
       
       const analyzeResponse = await analyzeLog(analysisId, aiModel);
+      
+      // Check if Git context was used
+      let gitInfo = analyzeResponse.analysis?.git_info;
+      if (gitInfo && gitInfo.detected_repository) {
+        setProgressStage(`📦 Using Git context from ${gitInfo.detected_repository}...`);
+        setProgressPercent(50);
+        await new Promise(resolve => setTimeout(resolve, 800)); // Show the git context stage briefly
+      }
+      
       setProgressPercent(60);
       setProgressStage('Analysis complete! Extracting patterns...');
 
@@ -229,7 +238,7 @@ export default function Dashboard() {
       setCurrentAnalysis(fullAnalysis);
       
       // Check if repository needs to be confirmed
-      const gitInfo = analyzeResponse.analysis?.git_info || fullAnalysis.analysis_data?.git_info;
+      gitInfo = analyzeResponse.analysis?.git_info || fullAnalysis.analysis_data?.git_info;
       if (gitInfo && !gitInfo.detected_repository && gitInfo.service_name && gitInfo.repository_suggestions?.length > 0) {
         // Show repository mapping dialog
         setPendingGitInfo(gitInfo);
@@ -559,11 +568,12 @@ export default function Dashboard() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="test-case">Test Case (Scenarios Only)</SelectItem>
+                        <SelectItem value="pytest">pytest (Python)</SelectItem>
                         <SelectItem value="jest">Jest (JavaScript) - BETA</SelectItem>
                         <SelectItem value="mocha">Mocha (JavaScript)</SelectItem>
                         <SelectItem value="cypress">Cypress (E2E)</SelectItem>
                         <SelectItem value="junit">JUnit (Java)</SelectItem>
-                        <SelectItem value="pytest">pytest (Python)</SelectItem>
                         <SelectItem value="rspec">RSpec (Ruby)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -915,6 +925,32 @@ export default function Dashboard() {
                             </div>
                             <div className="p-4">
                               <pre className="test-code">{testCase.test_code}</pre>
+                              
+                              {/* Debug Info Panel */}
+                              <div className="mt-4 pt-4 border-t border-slate-200">
+                                <div className="text-xs text-slate-500 space-y-1">
+                                  <div className="font-semibold text-slate-600 mb-2">🔍 Context Used for Generation:</div>
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-3 w-3 text-green-600" />
+                                    <span>Log Analysis: {currentAnalysis.analysis?.filename || currentAnalysis.filename || 'N/A'}</span>
+                                  </div>
+                                  {currentAnalysis.analysis?.analysis_data?.git_info?.detected_repository ? (
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle className="h-3 w-3 text-green-600" />
+                                      <span>Git Repository: <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">{currentAnalysis.analysis.analysis_data.git_info.detected_repository}</code></span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <Info className="h-3 w-3 text-slate-400" />
+                                      <span className="text-slate-400">Git Repository: Not detected</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2">
+                                    <Sparkles className="h-3 w-3 text-blue-600" />
+                                    <span>AI Model: <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">{currentAnalysis.analysis?.ai_model || currentAnalysis.ai_model || aiModel}</code></span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}

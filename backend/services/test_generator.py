@@ -33,10 +33,14 @@ class TestGenerator:
         
         Args:
             analysis_data: Analysis results from log analysis
-            framework: Test framework ('jest', 'junit', 'pytest', 'mocha', 'cypress', 'rspec')
+            framework: Test framework ('test-case', 'jest', 'junit', 'pytest', 'mocha', 'cypress', 'rspec')
             custom_prompt: Optional custom test generation prompt
             system_prompt: Optional system prompt to define AI's role
         """
+        # Special handling for test-case (scenarios only, no code)
+        if framework == "test-case":
+            return await self._generate_test_scenarios(analysis_data, custom_prompt, system_prompt)
+        
         # Create test generation prompt
         framework_templates = {
             "jest": self._get_jest_template(),
@@ -52,6 +56,29 @@ class TestGenerator:
         # Extract context information
         project_context = analysis_data.get('project_context', '')
         detected_framework = analysis_data.get('testing_framework_detected')
+        git_info = analysis_data.get('git_info', {})
+        
+        # Build Git context instructions
+        git_context_instructions = ""
+        if git_info and git_info.get('detected_repository'):
+            repo = git_info.get('detected_repository')
+            service = git_info.get('git_service', 'Git')
+            branch = git_info.get('branch', 'N/A')
+            commit = git_info.get('commit_hash', 'N/A')
+            
+            git_context_instructions = f"""
+🔗 GIT REPOSITORY CONTEXT:
+Repository: {repo}
+Service: {service}
+Branch: {branch}
+Commit: {commit[:8] if commit != 'N/A' else 'N/A'}
+
+⚠️ IMPORTANT: These tests are for the {repo} repository. Generate tests that:
+- Reference the actual repository structure and conventions
+- Use realistic endpoint paths and service names from this repo
+- Include proper API routes that match this codebase
+- Follow the coding standards used in {repo}
+"""
         
         context_instructions = ""
         if project_context:
@@ -84,6 +111,8 @@ IMPORTANT INSTRUCTIONS:
 ✅ DO create meaningful assertions that test actual conditions from the log file
 
 {custom_prompt}
+
+{git_context_instructions}
 
 {context_instructions}
 
@@ -146,6 +175,8 @@ LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cy
 ✅ At least 15-20 lines of meaningful test code per test
 
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
+
+{git_context_instructions}
 
 {context_instructions}
 
@@ -292,6 +323,137 @@ DO NOT USE ANY PLACEHOLDER TEXT OR GENERIC ASSERTIONS.
                 "test_code": self._get_sample_test(framework)
             }]
     
+    async def _generate_test_scenarios(self, analysis_data: Dict[str, Any], custom_prompt: str = None, system_prompt: str = None) -> List[Dict[str, Any]]:
+        """
+        Generate test scenarios/plans without code (for test-case framework)
+        """
+        git_info = analysis_data.get('git_info', {})
+        git_context = ""
+        if git_info and git_info.get('detected_repository'):
+            repo = git_info.get('detected_repository')
+            git_context = f"\n🔗 Repository: {repo}\n"
+        
+        prompt = f"""Based on the log analysis below, generate comprehensive TEST SCENARIOS (NO CODE).
+
+{git_context}
+
+ANALYSIS DATA:
+Log File: {analysis_data.get('filename', 'unknown')}
+Log Size: {analysis_data.get('log_size_full', 0)} characters
+
+ERROR PATTERNS: {self._format_patterns(analysis_data.get('error_patterns', []))}
+API ENDPOINTS: {self._format_api_endpoints(analysis_data.get('api_endpoints', []))}
+PERFORMANCE ISSUES: {self._format_performance_issues(analysis_data.get('performance_issues', []))}
+
+LOG EXCERPT:
+```
+{analysis_data.get('log_excerpt', 'No log excerpt')[:2000]}
+```
+
+Generate detailed TEST SCENARIOS in the following format (respond with JSON array):
+
+[
+  {{
+    "test_id": "TC-001",
+    "title": "Test scenario title",
+    "description": "What this test validates",
+    "priority": "high|medium|low",
+    "risk_score": 0.0-1.0,
+    "test_type": "functional|integration|performance|security|e2e",
+    "preconditions": ["Condition 1", "Condition 2"],
+    "test_steps": [
+      "1. Step description",
+      "2. Step description",
+      "3. Step description"
+    ],
+    "expected_results": ["Expected outcome 1", "Expected outcome 2"],
+    "test_data": {{
+      "input": "Sample input values",
+      "endpoint": "/api/path",
+      "payload": {{"key": "value"}}
+    }},
+    "related_errors": ["Error from logs that this test addresses"],
+    "acceptance_criteria": ["Criteria 1", "Criteria 2"]
+  }}
+]
+
+REQUIREMENTS:
+- Generate 5-10 comprehensive test scenarios
+- Each scenario should validate SPECIFIC issues from the log analysis
+- Include realistic test data from the logs (endpoints, error messages, etc.)
+- Prioritize by risk score (critical errors = high priority)
+- Make scenarios detailed enough for QA engineers to execute manually or automate later
+- Reference actual API endpoints, error types, and patterns from the analysis
+"""
+
+        try:
+            # Use the AI to generate test scenarios
+            sys_prompt = system_prompt or "You are a QA test planning expert. Generate detailed, actionable test scenarios."
+            
+            if self.provider == "openai":
+                response = await self._call_openai(prompt, sys_prompt)
+            elif self.provider == "anthropic":
+                response = await self._call_anthropic(prompt, sys_prompt)
+            elif self.provider == "google":
+                response = await self._call_google(prompt, sys_prompt)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+            
+            # Parse JSON response
+            json_str = self._extract_json(response)
+            scenarios = json.loads(json_str)
+            
+            # Convert to test_case format for consistency with existing structure
+            test_cases = []
+            for scenario in scenarios:
+                # Format the scenario as readable text instead of code
+                scenario_text = f"""Test ID: {scenario.get('test_id', 'N/A')}
+Title: {scenario.get('title', 'Untitled')}
+
+Description:
+{scenario.get('description', 'No description')}
+
+Test Type: {scenario.get('test_type', 'functional').upper()}
+
+Preconditions:
+{chr(10).join(f'- {p}' for p in scenario.get('preconditions', ['None']))}
+
+Test Steps:
+{chr(10).join(scenario.get('test_steps', ['No steps defined']))}
+
+Expected Results:
+{chr(10).join(f'✓ {er}' for er in scenario.get('expected_results', ['No expected results']))}
+
+Test Data:
+{json.dumps(scenario.get('test_data', {}), indent=2)}
+
+Related Errors:
+{chr(10).join(f'• {err}' for err in scenario.get('related_errors', ['None']))}
+
+Acceptance Criteria:
+{chr(10).join(f'[ ] {ac}' for ac in scenario.get('acceptance_criteria', ['None']))}
+"""
+                
+                test_cases.append({
+                    "description": scenario.get('title', 'Test Scenario'),
+                    "priority": scenario.get('priority', 'medium'),
+                    "risk_score": scenario.get('risk_score', 0.5),
+                    "test_code": scenario_text,
+                    "framework": "test-case"
+                })
+            
+            return test_cases
+            
+        except Exception as e:
+            print(f"Error generating test scenarios: {e}")
+            return [{
+                "description": "Error generating test scenarios",
+                "priority": "low",
+                "risk_score": 0.1,
+                "test_code": f"Failed to generate test scenarios: {str(e)}",
+                "framework": "test-case"
+            }]
+    
     async def _call_openai(self, prompt: str, system_prompt: str) -> str:
         """Call OpenAI API directly"""
         import openai
@@ -348,6 +510,21 @@ DO NOT USE ANY PLACEHOLDER TEXT OR GENERIC ASSERTIONS.
             generation_config=generation_config
         )
         return response.text
+    
+    def _extract_json(self, response: str) -> str:
+        """Extract JSON array or object from AI response"""
+        # Try to find JSON array first
+        json_match = re.search(r'\[.*\]', response, re.DOTALL)
+        if json_match:
+            return json_match.group()
+        
+        # Try to find JSON object
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            return json_match.group()
+        
+        # If no JSON found, return original response
+        return response
     
     def _contains_template_code(self, test_cases: List[Dict[str, Any]]) -> bool:
         """Check if test cases contain template/placeholder code"""

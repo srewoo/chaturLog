@@ -803,7 +803,7 @@ async def process_with_chunking(
     
     try:
         # Initialize chunking services
-        chunker = LogChunker(chunk_size=10000)  # 10k chars = ~2.5k tokens
+        chunker = LogChunker(chunk_size=5000)  # 5k chars = ~1.25k tokens (safer for context limits!)
         summarizer = ChunkSummarizer(ai_model="gpt-4o-mini", api_key=api_key)  # Use mini for cost efficiency!
         chunk_index = ChunkIndex(conn)
         
@@ -1177,6 +1177,9 @@ async def generate_tests(
                 "business_impact": complete_analysis.get("business_impact", {}),
                 "test_scenarios": complete_analysis.get("test_scenarios", []),
                 
+                # Git repository context (NEW!)
+                "git_info": complete_analysis.get("git_info", {}),
+                
                 # Log file information (NEW!)
                 "filename": analysis["filename"],
                 "log_file_path": analysis["file_path"],
@@ -1318,11 +1321,20 @@ async def get_analysis(analysis_id: int, user_id: int = Depends(get_current_user
     cursor.execute("SELECT * FROM test_cases WHERE analysis_id = ?", (analysis_id,))
     tests = cursor.fetchall()
     
+    # Parse analysis_data JSON if available
+    import json
+    analysis_dict = dict(analysis)
+    if analysis_dict.get("analysis_data"):
+        try:
+            analysis_dict["analysis_data"] = json.loads(analysis_dict["analysis_data"])
+        except json.JSONDecodeError:
+            pass  # Keep as string if not valid JSON
+    
     conn.close()
     
     return {
         "success": True,
-        "analysis": dict(analysis),
+        "analysis": analysis_dict,
         "patterns": [dict(p) for p in patterns],
         "test_cases": [dict(t) for t in tests]
     }
