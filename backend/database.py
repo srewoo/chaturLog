@@ -124,6 +124,35 @@ def init_db():
         )
     ''')
     
+    # Git Configuration table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS git_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            git_provider TEXT,
+            repository TEXT,
+            git_token_encrypted TEXT,
+            default_branch TEXT DEFAULT 'main',
+            enabled BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    
+    # Repository Mappings table (user-provided service name → repo mapping)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS repo_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            service_name TEXT NOT NULL,
+            repository TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, service_name)
+        )
+    ''')
+    
     # Create indexes for performance optimization
     print("📊 Creating database indexes...")
     
@@ -180,6 +209,18 @@ def init_db():
         ON chunk_summaries(analysis_id, chunk_id)
     ''')
     
+    # Index for git configurations by user
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_git_configs_user 
+        ON git_configs(user_id, enabled)
+    ''')
+    
+    # Index for repository mappings by user and service name
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_repo_mappings_user 
+        ON repo_mappings(user_id, service_name)
+    ''')
+    
     conn.commit()
     conn.close()
     print("✅ Database initialized successfully with indexes")
@@ -211,3 +252,25 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     """Verify password against hash"""
     return hash_password(password) == hashed
+
+def encrypt_token(token: str) -> str:
+    """
+    Encrypt Git token for secure storage
+    Uses simple base64 encoding for MVP - should use proper encryption in production
+    """
+    import base64
+    if not token:
+        return None
+    return base64.b64encode(token.encode()).decode()
+
+def decrypt_token(encrypted_token: str) -> str:
+    """
+    Decrypt Git token for use
+    """
+    import base64
+    if not encrypted_token:
+        return None
+    try:
+        return base64.b64decode(encrypted_token.encode()).decode()
+    except:
+        return None

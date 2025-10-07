@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadLogFile, analyzeLog, generateTests, getAnalyses, getAnalysis, exportTests } from '../utils/api';
+import { uploadLogFile, analyzeLog, generateTests, getAnalyses, getAnalysis, exportTests, saveRepoMapping, deleteAnalysis, deleteAllAnalyses } from '../utils/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink, Search, Filter, AlertCircle, Activity, Zap, TrendingUp, AlertTriangle, Info, CheckCircle } from 'lucide-react';
+import { Upload, FileText, Download, LogOut, Sparkles, Code, Settings, HelpCircle, BookOpen, ExternalLink, Search, Filter, AlertCircle, Activity, Zap, TrendingUp, AlertTriangle, Info, CheckCircle, GitBranch, Trash2 } from 'lucide-react';
 
 export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -32,6 +34,20 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [progressStage, setProgressStage] = useState('');
   const [progressPercent, setProgressPercent] = useState(0);
+  
+  // Repository mapping dialog state
+  const [showRepoDialog, setShowRepoDialog] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState('');
+  const [customRepo, setCustomRepo] = useState('');
+  const [repoOrgName, setRepoOrgName] = useState('');
+  const [pendingGitInfo, setPendingGitInfo] = useState(null);
+  
+  // Delete confirmation state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [analysisToDelete, setAnalysisToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  
   const navigate = useNavigate();
 
   const userEmail = localStorage.getItem('user_email');
@@ -46,6 +62,93 @@ export default function Dashboard() {
       setAnalyses(response.analyses || []);
     } catch (err) {
       console.error('Failed to load analyses:', err);
+    }
+  };
+
+  // Repository mapping handlers
+  const handleSaveRepoMapping = async () => {
+    try {
+      const repoName = customRepo || selectedSuggestion;
+      const fullRepo = repoOrgName ? `${repoOrgName}/${repoName}` : repoName;
+      
+      if (!fullRepo || !fullRepo.includes('/')) {
+        alert('Please provide repository in org/repo format');
+        return;
+      }
+
+      await saveRepoMapping(pendingGitInfo.service_name, fullRepo);
+      
+      setUploadStatus(`✅ Repository mapping saved: ${pendingGitInfo.service_name} → ${fullRepo}`);
+      setShowRepoDialog(false);
+      setPendingGitInfo(null);
+      setSelectedSuggestion('');
+      setCustomRepo('');
+      setRepoOrgName('');
+    } catch (err) {
+      console.error('Failed to save repository mapping:', err);
+      alert('Failed to save repository mapping. Please try again.');
+    }
+  };
+
+  const handleSkipRepoMapping = () => {
+    setShowRepoDialog(false);
+    setPendingGitInfo(null);
+    setSelectedSuggestion('');
+    setCustomRepo('');
+    setRepoOrgName('');
+  };
+
+  // Delete handlers
+  const handleDeleteClick = (analysis) => {
+    setAnalysisToDelete(analysis);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!analysisToDelete) return;
+    
+    setDeleting(true);
+    try {
+      await deleteAnalysis(analysisToDelete.id);
+      setUploadStatus(`✅ Analysis "${analysisToDelete.filename}" deleted successfully`);
+      await loadAnalyses();
+      
+      // Clear current analysis if it was deleted
+      if (currentAnalysis && currentAnalysis.analysis.id === analysisToDelete.id) {
+        setCurrentAnalysis(null);
+      }
+      
+      setShowDeleteDialog(false);
+      setAnalysisToDelete(null);
+      setTimeout(() => setUploadStatus(''), 3000);
+    } catch (err) {
+      console.error('Failed to delete analysis:', err);
+      setUploadStatus(`❌ Failed to delete analysis: ${err.response?.data?.detail || err.message}`);
+      setTimeout(() => setUploadStatus(''), 5000);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAllClick = () => {
+    setShowDeleteAllDialog(true);
+  };
+
+  const handleConfirmDeleteAll = async () => {
+    setDeleting(true);
+    try {
+      const result = await deleteAllAnalyses();
+      setUploadStatus(`✅ ${result.deleted_count} analyses deleted successfully`);
+      await loadAnalyses();
+      setCurrentAnalysis(null);
+      setShowDeleteAllDialog(false);
+      setTimeout(() => setUploadStatus(''), 3000);
+    } catch (err) {
+      console.error('Failed to delete all analyses:', err);
+      setUploadStatus(`❌ Failed to delete analyses: ${err.response?.data?.detail || err.message}`);
+      setTimeout(() => setUploadStatus(''), 5000);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -124,6 +227,15 @@ export default function Dashboard() {
       
       const fullAnalysis = await getAnalysis(analysisId);
       setCurrentAnalysis(fullAnalysis);
+      
+      // Check if repository needs to be confirmed
+      const gitInfo = analyzeResponse.analysis?.git_info || fullAnalysis.analysis_data?.git_info;
+      if (gitInfo && !gitInfo.detected_repository && gitInfo.service_name && gitInfo.repository_suggestions?.length > 0) {
+        // Show repository mapping dialog
+        setPendingGitInfo(gitInfo);
+        setSelectedSuggestion(gitInfo.repository_suggestions[0] || '');
+        setShowRepoDialog(true);
+      }
 
       // Reload analyses list
       await loadAnalyses();
@@ -258,37 +370,25 @@ export default function Dashboard() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <a 
-                      href="https://github.com/srewoo/chaturLog/blob/main/README.md" 
+                      href="/docs.html" 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="flex items-center cursor-pointer"
                     >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Getting Started
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Complete Documentation
                       <ExternalLink className="h-3 w-3 ml-auto" />
                     </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <a 
-                      href="https://github.com/srewoo/chaturLog/blob/main/SETUP_GUIDE.md" 
+                      href="https://github.com/srewoo/chaturLog" 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="flex items-center cursor-pointer"
                     >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Setup Guide
-                      <ExternalLink className="h-3 w-3 ml-auto" />
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a 
-                      href="https://github.com/srewoo/chaturLog/blob/main/IMPROVEMENT_RECOMMENDATIONS.md" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center cursor-pointer"
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Feature Roadmap
+                      <GitBranch className="h-4 w-4 mr-2" />
+                      GitHub Repository
                       <ExternalLink className="h-3 w-3 ml-auto" />
                     </a>
                   </DropdownMenuItem>
@@ -830,10 +930,25 @@ export default function Dashboard() {
           <TabsContent value="history" data-testid="history-content">
             <Card>
               <CardHeader>
-                <CardTitle>Analysis History</CardTitle>
-                <CardDescription>
-                  View and manage your previous log analyses ({filteredAnalyses.length})
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Analysis History</CardTitle>
+                    <CardDescription>
+                      View and manage your previous log analyses ({filteredAnalyses.length})
+                    </CardDescription>
+                  </div>
+                  {analyses.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteAllClick}
+                      className="flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Clear All History
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {/* Search and Filter Controls */}
@@ -936,12 +1051,14 @@ export default function Dashboard() {
                     {filteredAnalyses.map((analysis) => (
                       <div
                         key={analysis.id}
-                        className="p-4 border border-slate-200 rounded-lg card-hover cursor-pointer"
-                        onClick={() => loadAnalysisDetails(analysis.id)}
+                        className="p-4 border border-slate-200 rounded-lg card-hover"
                         data-testid={`analysis-${analysis.id}`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex-1">
+                          <div 
+                            className="flex-1 cursor-pointer"
+                            onClick={() => loadAnalysisDetails(analysis.id)}
+                          >
                             <div className="flex items-center space-x-2 mb-1">
                               <Code className="h-4 w-4 text-slate-400" />
                               <span className="font-medium text-slate-900">{analysis.filename}</span>
@@ -954,9 +1071,23 @@ export default function Dashboard() {
                               </span>
                             </div>
                           </div>
-                          <Badge className={getStatusColor(analysis.status)}>
-                            {analysis.status}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getStatusColor(analysis.status)}>
+                              {analysis.status}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(analysis);
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete analysis"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -967,6 +1098,229 @@ export default function Dashboard() {
           </TabsContent>
         </Tabs>
       </main>
+      
+      {/* Repository Mapping Dialog */}
+      <Dialog open={showRepoDialog} onOpenChange={setShowRepoDialog}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5" />
+              Confirm Repository
+            </DialogTitle>
+            <DialogDescription>
+              We detected a service name but couldn't find the repository automatically.
+              Please help us identify the correct repository.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {pendingGitInfo && (
+            <div className="space-y-4 py-4">
+              {/* Service Name Info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm">
+                  <span className="font-medium">Service Name:</span> 
+                  <code className="ml-2 bg-blue-100 px-2 py-1 rounded">{pendingGitInfo.service_name}</code>
+                </p>
+              </div>
+              
+              {/* Repository Suggestions */}
+              <div className="space-y-2">
+                <Label>Select from suggestions:</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {pendingGitInfo.repository_suggestions?.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => {
+                        setSelectedSuggestion(suggestion);
+                        setCustomRepo('');
+                      }}
+                      className={`px-3 py-2 text-sm border rounded-md text-left hover:bg-slate-50 transition-colors ${
+                        selectedSuggestion === suggestion && !customRepo
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-300'
+                      }`}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Custom Repository Input */}
+              <div className="space-y-2">
+                <Label>Or enter custom repository name:</Label>
+                <Input
+                  placeholder="e.g., apollo-server"
+                  value={customRepo}
+                  onChange={(e) => {
+                    setCustomRepo(e.target.value);
+                    setSelectedSuggestion('');
+                  }}
+                />
+              </div>
+              
+              {/* Organization Name */}
+              <div className="space-y-2">
+                <Label>Organization/Owner name: <span className="text-red-500">*</span></Label>
+                <Input
+                  placeholder="e.g., myorg"
+                  value={repoOrgName}
+                  onChange={(e) => setRepoOrgName(e.target.value)}
+                />
+                <p className="text-xs text-slate-500">
+                  Final repository: <code className="bg-slate-100 px-1">{repoOrgName || 'myorg'}/{customRepo || selectedSuggestion || 'repo-name'}</code>
+                </p>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={handleSkipRepoMapping}>
+              Skip for Now
+            </Button>
+            <Button 
+              onClick={handleSaveRepoMapping}
+              disabled={!repoOrgName || (!customRepo && !selectedSuggestion)}
+            >
+              Save Mapping
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete Single Analysis Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Analysis
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the analysis and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {analysisToDelete && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 my-4">
+              <p className="text-sm">
+                <span className="font-medium">File:</span>{' '}
+                <code className="bg-slate-200 px-2 py-1 rounded">{analysisToDelete.filename}</code>
+              </p>
+              <p className="text-sm mt-2">
+                <span className="font-medium">Created:</span>{' '}
+                {new Date(analysisToDelete.created_at).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+          )}
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-medium">⚠️ Warning: This action is permanent</p>
+              <p className="mt-1">The log file, analysis data, patterns, and test cases will all be deleted.</p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setAnalysisToDelete(null);
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="flex items-center gap-2"
+            >
+              {deleting ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete Permanently
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete All Analyses Confirmation Dialog */}
+      <Dialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Clear All History
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete ALL analyses and their data.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 my-4">
+            <p className="text-sm">
+              <span className="font-medium">Total Analyses:</span>{' '}
+              <span className="text-lg font-bold text-red-600">{analyses.length}</span>
+            </p>
+            <p className="text-sm mt-2 text-slate-600">
+              All log files, analysis data, error patterns, and test cases will be permanently deleted.
+            </p>
+          </div>
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-medium">🚨 Critical Warning: No Recovery Possible</p>
+              <p className="mt-1">Once deleted, there is no way to recover this data. Please make sure you have exported any important test cases before proceeding.</p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDeleteAllDialog(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleConfirmDeleteAll}
+              disabled={deleting}
+              className="flex items-center gap-2"
+            >
+              {deleting ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete All {analyses.length} Analyses
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

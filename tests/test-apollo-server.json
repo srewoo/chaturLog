@@ -1,0 +1,45 @@
+[
+  {
+    "timestamp": "2025-01-07T10:30:00.000Z",
+    "name": "APOLLO_SERVER",
+    "level": "ERROR",
+    "message": "Database connection timeout after 30s",
+    "stack": "Error: connect ETIMEDOUT\n    at TCPConnectWrap.afterConnect [as oncomplete] (net.js:1146:16)",
+    "database": "postgres",
+    "host": "db.example.com",
+    "port": 5432
+  },
+  {
+    "timestamp": "2025-01-07T10:30:05.000Z",
+    "name": "APOLLO_SERVER",
+    "level": "ERROR",
+    "message": "Failed to execute GraphQL query",
+    "query": "{ user(id: 123) { name email } }",
+    "error": "Database unavailable"
+  },
+  {
+    "timestamp": "2025-01-07T10:30:10.000Z",
+    "name": "APOLLO_SERVER",
+    "level": "WARN",
+    "message": "Retrying database connection (attempt 1/3)",
+    "database": "postgres"
+  },
+  {
+    "timestamp": "2025-01-07T10:30:15.000Z",
+    "name": "APOLLO_SERVER",
+    "level": "ERROR",
+    "message": "Connection retry failed",
+    "attempt": 1,
+    "maxRetries": 3
+  },
+  {
+    "timestamp": "2025-01-07T10:30:20.000Z",
+    "name": "APOLLO_SERVER",
+    "level": "ERROR",
+    "message": "API endpoint /graphql returned 500",
+    "endpoint": "/graphql",
+    "method": "POST",
+    "statusCode": 500,
+    "responseTime": "3521ms"
+  }
+]

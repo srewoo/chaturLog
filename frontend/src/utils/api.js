@@ -114,4 +114,34 @@ export const deletePrompt = async (promptId) => {
   return response.data;
 };
 
+// Repository Mappings APIs
+export const getRepoMappings = async () => {
+  const response = await api.get('/repo-mappings');
+  return response.data;
+};
+
+export const saveRepoMapping = async (serviceName, repository) => {
+  const response = await api.post('/repo-mappings', {
+    service_name: serviceName,
+    repository: repository
+  });
+  return response.data;
+};
+
+export const deleteRepoMapping = async (serviceName) => {
+  const response = await api.delete(`/repo-mappings/${serviceName}`);
+  return response.data;
+};
+
+// Delete Analysis APIs
+export const deleteAnalysis = async (analysisId) => {
+  const response = await api.delete(`/analyses/${analysisId}`);
+  return response.data;
+};
+
+export const deleteAllAnalyses = async () => {
+  const response = await api.delete('/analyses');
+  return response.data;
+};
+
 export default api;

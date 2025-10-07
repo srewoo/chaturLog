@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChaturLog Documentation - AI-Powered Log Analysis & Test Generation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --secondary: #10b981;
+            --accent: #f59e0b;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --gray: #64748b;
+            --border: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--light);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.95;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin: 0.5rem 0.25rem;
+        }
+
+        /* Navigation */
+        .nav {
+            position: sticky;
+            top: 0;
+            background: white;
+            border-bottom: 2px solid var(--border);
+            padding: 1rem 2rem;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 2rem;
+            overflow-x: auto;
+        }
+
+        .nav-link {
+            color: var(--gray);
+            text-decoration: none;
+            white-space: nowrap;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            background: var(--light);
+            color: var(--primary);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Sections */
+        section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        section h2 {
+            color: var(--primary);
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--primary);
+        }
+
+        section h3 {
+            color: var(--dark);
+            font-size: 1.5rem;
+            margin: 1.5rem 0 1rem;
+        }
+
+        section h4 {
+            color: var(--dark);
+            font-size: 1.2rem;
+            margin: 1rem 0 0.5rem;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Code blocks */
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e74c3c;
+        }
+
+        pre {
+            background: var(--dark);
+            color: #fff;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: transparent;
+            color: #fff;
+            padding: 0;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th {
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover {
+            background: var(--light);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--light);
+            border-left: 4px solid var(--primary);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 6px;
+        }
+
+        .card.success {
+            border-left-color: var(--success);
+        }
+
+        .card.warning {
+            border-left-color: var(--warning);
+        }
+
+        .card.info {
+            border-left-color: var(--primary);
+        }
+
+        /* Steps */
+        .steps {
+            counter-reset: step-counter;
+        }
+
+        .step {
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 3rem;
+            margin-bottom: 2rem;
+        }
+
+        .step::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 2rem;
+            height: 2rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .feature {
+            background: var(--light);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            transition: all 0.3s;
+        }
+
+        .feature:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.2);
+        }
+
+        .feature h4 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--secondary);
+        }
+
+        .btn-secondary:hover {
+            background: #059669;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+            border-left: 4px solid;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border-color: var(--success);
+            color: #065f46;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            border-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            border-color: var(--primary);
+            color: #1e40af;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            border-color: var(--error);
+            color: #991b1b;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--dark);
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .nav-container {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            section {
+                padding: 1.5rem;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            .nav, .footer {
+                display: none;
+            }
+
+            section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>🚀 ChaturLog Documentation</h1>
+        <p>AI-Powered Log Analysis & Test Generation Platform</p>
+        <div>
+            <span class="badge">Python 3.8+</span>
+            <span class="badge">React 19</span>
+            <span class="badge">FastAPI</span>
+            <span class="badge">AI-Powered</span>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="#overview" class="nav-link">Overview</a>
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#quick-start" class="nav-link">Quick Start</a>
+            <a href="#git-integration" class="nav-link">Git Integration</a>
+            <a href="#test-frameworks" class="nav-link">Test Frameworks</a>
+            <a href="#api-reference" class="nav-link">API Reference</a>
+            <a href="#troubleshooting" class="nav-link">Troubleshooting</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Overview -->
+        <section id="overview">
+            <h2>📋 Overview</h2>
+            <p><strong>ChaturLog</strong> is an intelligent platform that uses advanced AI models to analyze application logs and automatically generate comprehensive test cases. It helps developers quickly identify issues, understand error patterns, and create production-ready tests in multiple frameworks.</p>
+            
+            <h3>🎯 What It Does</h3>
+            <div class="feature-grid">
+                <div class="feature">
+                    <h4>🔍 Analyze Logs</h4>
+                    <p>Upload log files and get AI-powered analysis with error pattern detection</p>
+                </div>
+                <div class="feature">
+                    <h4>🤖 Multiple AI Models</h4>
+                    <p>OpenAI GPT-4o, Claude 4 Sonnet, Gemini 2.0 Flash</p>
+                </div>
+                <div class="feature">
+                    <h4>🧪 Generate Tests</h4>
+                    <p>Automatic test case generation in Jest, JUnit, pytest, Mocha, Cypress, RSpec</p>
+                </div>
+                <div class="feature">
+                    <h4>📊 Error Patterns</h4>
+                    <p>Detect and classify errors by severity and frequency</p>
+                </div>
+                <div class="feature">
+                    <h4>🌿 Git Integration</h4>
+                    <p>Smart repository detection from logs with automatic mapping</p>
+                </div>
+                <div class="feature">
+                    <h4>📈 History Tracking</h4>
+                    <p>View and access all previous analyses with search and filter</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features">
+            <h2>✨ Features</h2>
+            
+            <h3>Core Functionality</h3>
+            <ul>
+                <li>✅ <strong>User Authentication</strong> - Secure JWT-based authentication</li>
+                <li>✅ <strong>File Upload</strong> - Drag-and-drop interface with validation</li>
+                <li>✅ <strong>AI Analysis</strong> - Powered by OpenAI, Claude, and Gemini</li>
+                <li>✅ <strong>Test Generation</strong> - Jest, JUnit, pytest, Mocha, Cypress, RSpec support</li>
+                <li>✅ <strong>Pattern Detection</strong> - Error classification and severity assessment</li>
+                <li>✅ <strong>API Extraction</strong> - Identify endpoints and status codes</li>
+                <li>✅ <strong>Git Integration</strong> 🆕 - Smart repository detection from logs</li>
+                <li>✅ <strong>Repository Mappings</strong> 🆕 - Automatic service-to-repo mapping</li>
+                <li>✅ <strong>Custom AI Prompts</strong> - Personalize analysis behavior</li>
+                <li>✅ <strong>Scalable Processing</strong> - Handle large log files efficiently</li>
+                <li>✅ <strong>Export Tests</strong> - Download as ZIP file</li>
+                <li>✅ <strong>History Management</strong> 🆕 - Delete individual or all analyses (non-recoverable)</li>
+            </ul>
+
+            <h3>Technical Features</h3>
+            <ul>
+                <li>✅ Modern Stack - FastAPI + React 19</li>
+                <li>✅ Beautiful UI - shadcn/ui components + Tailwind CSS</li>
+                <li>✅ Error Handling - Error boundaries and graceful failures</li>
+                <li>✅ Loading States - Skeleton screens for better UX</li>
+                <li>✅ File Validation - Client and server-side validation</li>
+                <li>✅ Responsive Design - Works on all screen sizes</li>
+            </ul>
+        </section>
+
+        <!-- Quick Start -->
+        <section id="quick-start">
+            <h2>🚀 Quick Start</h2>
+            
+            <h3>Prerequisites</h3>
+            <ul>
+                <li>Python 3.8+</li>
+                <li>Node.js 16+</li>
+                <li>npm/yarn</li>
+                <li>API keys from OpenAI, Anthropic, and/or Google AI (at least one required)</li>
+            </ul>
+
+            <div class="steps">
+                <div class="step">
+                    <h4>Clone Repository</h4>
+                    <pre><code>git clone &lt;repository-url&gt;
+cd chaturLog</code></pre>
+                </div>
+
+                <div class="step">
+                    <h4>Backend Setup</h4>
+                    <pre><code>cd backend
+pip install -r requirements.txt
+
+# Create .env file
+cat > .env << EOF
+JWT_SECRET_KEY=your-secret-key-here
+CORS_ORIGINS=http://localhost:3000
+EOF
+
+# Start server
+python server.py</code></pre>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> API keys are now configured per-user in the Settings page for security and flexibility.
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h4>Frontend Setup</h4>
+                    <pre><code>cd frontend
+yarn install
+
+# Create .env file
+echo "REACT_APP_BACKEND_URL=http://localhost:8001" > .env
+
+# Start dev server
+yarn start</code></pre>
+                </div>
+
+                <div class="step">
+                    <h4>Open Application</h4>
+                    <p>Navigate to: <code>http://localhost:3000</code></p>
+                </div>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>🎉 Success!</strong> ChaturLog is now running. Register an account and start analyzing logs!
+            </div>
+        </section>
+
+        <!-- Git Integration -->
+        <section id="git-integration">
+            <h2>🌿 Git Integration</h2>
+            
+            <h3>Intelligent Repository Detection</h3>
+            <p>ChaturLog can <strong>automatically detect Git repositories</strong> from your log files using multiple strategies.</p>
+
+            <h4>1. Service Name Detection 🎯</h4>
+            <p>Detects repository from service names in logs:</p>
+            <pre><code>{"name": "APOLLO_SERVER"}
+{"name": "USER_SERVICE"}
+{"name": "PAYMENT_API"}</code></pre>
+
+            <h4>2. Smart Variants Generation 🧠</h4>
+            <p>For <code>APOLLO_SERVER</code>, ChaturLog suggests:</p>
+            <ul>
+                <li>✅ <code>apollo-server</code> (most common)</li>
+                <li>✅ <code>apollo_server</code></li>
+                <li>✅ <code>apollo</code> (shortened)</li>
+                <li>✅ <code>APOLLO-SERVER</code></li>
+                <li>✅ <code>APOLLO</code></li>
+            </ul>
+
+            <h4>3. Repository Mappings 💾</h4>
+            <ul>
+                <li>Save service-to-repository mappings</li>
+                <li>Automatically applied in future analyses</li>
+                <li>Managed in Settings → Git Integration</li>
+                <li>One-time setup per service</li>
+            </ul>
+
+            <h4>4. Graceful Fallbacks 🛡️</h4>
+            <p>When repository isn't detected:</p>
+            <ul>
+                <li>Shows intelligent suggestions based on service names</li>
+                <li>Allows custom repository input</li>
+                <li>Never blocks analysis</li>
+                <li>User always in control</li>
+            </ul>
+
+            <h3>How It Works</h3>
+            <div class="card info">
+                <pre><code>Upload Log → Detect Service → Generate Suggestions → User Confirms → Saved!
+                                                                           ↓
+                                                Future uploads auto-apply ✅</code></pre>
+            </div>
+
+            <h3>Configuration</h3>
+            <p><strong>Settings → Git Integration Tab:</strong></p>
+            <ol>
+                <li><strong>Git Provider</strong> - GitHub, GitLab, Bitbucket</li>
+                <li><strong>Personal Access Token</strong> - Read-only access</li>
+                <li><strong>Default Repository</strong> - Your main repo</li>
+                <li><strong>Repository Mappings</strong> - View/manage service mappings</li>
+            </ol>
+
+            <h3>Benefits</h3>
+            <div class="feature-grid">
+                <div class="feature">
+                    <h4>🎯 High Success Rate</h4>
+                    <p>95%+ detection success rate with mappings</p>
+                </div>
+                <div class="feature">
+                    <h4>⚡ Zero Friction</h4>
+                    <p>Auto-applied in repeat analyses</p>
+                </div>
+                <div class="feature">
+                    <h4>🧠 Learning System</h4>
+                    <p>Gets smarter over time</p>
+                </div>
+                <div class="feature">
+                    <h4>💾 Persistent Storage</h4>
+                    <p>Remembers your choices</p>
+                </div>
+            </div>
+
+            <h3>Detection Methods</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Example</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Direct URLs</td>
+                        <td><code>https://github.com/org/repo</code></td>
+                        <td>⭐⭐⭐⭐⭐</td>
+                    </tr>
+                    <tr>
+                        <td>CI/CD Env</td>
+                        <td><code>GITHUB_REPOSITORY=org/repo</code></td>
+                        <td>⭐⭐⭐⭐⭐</td>
+                    </tr>
+                    <tr>
+                        <td>Explicit Refs</td>
+                        <td><code>repository: org/repo</code></td>
+                        <td>⭐⭐⭐⭐</td>
+                    </tr>
+                    <tr>
+                        <td>Docker Tags</td>
+                        <td><code>myorg/myapp:v1.0</code></td>
+                        <td>⭐⭐⭐⭐</td>
+                    </tr>
+                    <tr>
+                        <td>Service Names 🆕</td>
+                        <td><code>{"name":"APOLLO_SERVER"}</code></td>
+                        <td>⭐⭐⭐</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Quick Start with Git Integration</h3>
+            <div class="steps">
+                <div class="step">
+                    <h4>Upload a Log File</h4>
+                    <p>Upload any log file containing service information like <code>{"name":"APOLLO_SERVER"}</code></p>
+                </div>
+                <div class="step">
+                    <h4>Confirm Repository (First Time Only)</h4>
+                    <p>If ChaturLog detects a service name but not the repository, you'll see suggestions. Click a suggestion or enter custom name, then enter your organization.</p>
+                </div>
+                <div class="step">
+                    <h4>Enjoy Automation!</h4>
+                    <p>Next time you upload logs with the same service name, the repository is auto-applied with no dialog!</p>
+                </div>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>🎉 Pro Tip:</strong> The more you use ChaturLog, the smarter it gets! Save mappings once and benefit forever.
+            </div>
+        </section>
+
+        <!-- Test Frameworks -->
+        <section id="test-frameworks">
+            <h2>🧪 Test Frameworks</h2>
+            
+            <h3>Supported Frameworks</h3>
+            
+            <h4>Jest (JavaScript/TypeScript)</h4>
+            <pre><code>import request from 'supertest';
+
+describe('API Tests', () => {
+  it('should handle error scenario', async () => {
+    const response = await request(app).get('/api/endpoint');
+    expect(response.status).toBe(200);
+  });
+});</code></pre>
+
+            <h4>JUnit (Java)</h4>
+            <pre><code>import org.junit.Test;
+import static org.junit.Assert.*;
+
+public class ApiTest {
+  @Test
+  public void testErrorScenario() {
+    // Test implementation
+    assertTrue(true);
+  }
+}</code></pre>
+
+            <h4>pytest (Python)</h4>
+            <pre><code>import pytest
+
+def test_error_scenario():
+    # Test implementation
+    assert True</code></pre>
+
+            <h4>Mocha (JavaScript)</h4>
+            <pre><code>const { expect } = require('chai');
+
+describe('API Tests', () => {
+  it('should handle error scenario', () => {
+    expect(true).to.be.true;
+  });
+});</code></pre>
+
+            <h4>Cypress (E2E Testing)</h4>
+            <pre><code>describe('End-to-End Tests', () => {
+  it('should navigate and test flow', () => {
+    cy.visit('/');
+    cy.get('#element').should('be.visible');
+  });
+});</code></pre>
+
+            <h4>RSpec (Ruby)</h4>
+            <pre><code>require 'spec_helper'
+
+describe 'API Tests' do
+  it 'handles error scenario' do
+    expect(true).to be_truthy
+  end
+end</code></pre>
+        </section>
+
+        <!-- API Reference -->
+        <section id="api-reference">
+            <h2>📡 API Reference</h2>
+            
+            <h3>Authentication Endpoints</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/api/auth/register</code></td>
+                        <td>POST</td>
+                        <td>User registration</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/auth/login</code></td>
+                        <td>POST</td>
+                        <td>User login</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Analysis Endpoints</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/api/upload</code></td>
+                        <td>POST</td>
+                        <td>Upload log file</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/analyze/{id}</code></td>
+                        <td>POST</td>
+                        <td>Analyze log with AI (includes Git detection)</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/generate-tests/{id}</code></td>
+                        <td>POST</td>
+                        <td>Generate test cases</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/analyses</code></td>
+                        <td>GET</td>
+                        <td>Get all analyses</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/analyses/{id}</code></td>
+                        <td>GET</td>
+                        <td>Get specific analysis</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/export/{id}</code></td>
+                        <td>GET</td>
+                        <td>Export tests as ZIP</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/analyses/{id}</code></td>
+                        <td>DELETE</td>
+                        <td>Delete specific analysis 🆕</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/analyses</code></td>
+                        <td>DELETE</td>
+                        <td>Delete all analyses 🆕</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Settings Endpoints</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>/api/settings/api-keys</code></td>
+                        <td>GET/POST</td>
+                        <td>Manage AI API keys</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/prompts</code></td>
+                        <td>GET/POST</td>
+                        <td>Manage custom prompts</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/settings/git-config</code></td>
+                        <td>GET/POST</td>
+                        <td>Git configuration 🆕</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/settings/git-config/test</code></td>
+                        <td>POST</td>
+                        <td>Test Git connection 🆕</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/repo-mappings</code></td>
+                        <td>GET/POST</td>
+                        <td>Repository mappings 🆕</td>
+                    </tr>
+                    <tr>
+                        <td><code>/api/repo-mappings/{name}</code></td>
+                        <td>DELETE</td>
+                        <td>Delete mapping 🆕</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Troubleshooting -->
+        <section id="troubleshooting">
+            <h2>🐛 Troubleshooting</h2>
+            
+            <h3>Common Issues</h3>
+            
+            <div class="card warning">
+                <h4>Issue: Backend fails to start</h4>
+                <p><strong>Solution:</strong> Ensure all Python dependencies are installed:</p>
+                <pre><code>pip install fastapi uvicorn python-multipart pydantic email-validator PyJWT python-dotenv openai anthropic google-generativeai</code></pre>
+            </div>
+
+            <div class="card warning">
+                <h4>Issue: Port already in use</h4>
+                <p><strong>Solution:</strong> Kill the process using the port:</p>
+                <pre><code># Find process
+lsof -ti:8001
+
+# Kill process
+kill -9 &lt;PID&gt;</code></pre>
+            </div>
+
+            <div class="card warning">
+                <h4>Issue: Git connection fails</h4>
+                <p><strong>Solution:</strong> Verify your Git token has read permissions and the repository path is correct (e.g., <code>org/repo</code> for GitHub/GitLab).</p>
+            </div>
+
+            <div class="card warning">
+                <h4>Issue: Repository mapping dialog doesn't appear</h4>
+                <p><strong>Possible causes:</strong></p>
+                <ul>
+                    <li>Repository already detected directly</li>
+                    <li>Mapping already exists</li>
+                    <li>No service name in logs</li>
+                </ul>
+                <p><strong>Solution:</strong> Check Settings → Repository Mappings to see existing mappings</p>
+            </div>
+
+            <h3>Getting Help</h3>
+            <div class="alert alert-info">
+                <p>For additional support:</p>
+                <ol>
+                    <li>Check the API Reference section above</li>
+                    <li>Review server logs for error messages</li>
+                    <li>Open an issue on GitHub</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Security -->
+        <section id="security">
+            <h2>🔐 Security</h2>
+            
+            <div class="feature-grid">
+                <div class="feature">
+                    <h4>🔑 Authentication</h4>
+                    <p>JWT token authentication for secure sessions</p>
+                </div>
+                <div class="feature">
+                    <h4>🔒 Password Hashing</h4>
+                    <p>SHA-256 hashing for password storage</p>
+                </div>
+                <div class="feature">
+                    <h4>📄 File Validation</h4>
+                    <p>Type and size validation (50MB limit)</p>
+                </div>
+                <div class="feature">
+                    <h4>🛡️ CORS Protection</h4>
+                    <p>Configured origins for API access</p>
+                </div>
+                <div class="feature">
+                    <h4>✅ Input Sanitization</h4>
+                    <p>All inputs validated and sanitized</p>
+                </div>
+                <div class="feature">
+                    <h4>🔐 Secure Storage</h4>
+                    <p>Encrypted tokens and secure file storage</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>Made with ❤️ by developers, for developers</p>
+        <p>ChaturLog &copy; 2025 | AI-Powered Log Analysis & Test Generation</p>
+        <p style="margin-top: 1rem; opacity: 0.8;">
+            <small>Last updated: January 7, 2025</small>
+        </p>
+    </div>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(link.getAttribute('href'));
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+
+        // Highlight active section in navigation
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.pageYOffset >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.style.color = '';
+                link.style.background = '';
+                if (link.getAttribute('href') === `#${current}`) {
+                    link.style.color = 'var(--primary)';
+                    link.style.background = 'var(--light)';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -37,20 +37,37 @@ class LogAnalyzer:
             custom_prompt: Optional custom analysis prompt
             system_prompt: Optional system prompt to define AI's role
         """
-        # Smart log content sampling for better analysis
-        def smart_sample_log(content: str, max_chars: int = 30000) -> str:
-            """Sample log content intelligently if too large"""
+        # Enhanced error-aware sampling for better analysis
+        def error_aware_sample_log(content: str, max_chars: int = 30000) -> str:
+            """
+            Sample log content intelligently based on error density
+            Prioritizes sections with errors, warnings, and critical events
+            """
             if len(content) <= max_chars:
                 return content
             
-            # Take from beginning, middle, and end
-            chunk_size = max_chars // 3
-            start = content[:chunk_size]
-            middle_pos = len(content) // 2 - chunk_size // 2
-            middle = content[middle_pos:middle_pos + chunk_size]
-            end = content[-chunk_size:]
+            # Error patterns to detect (case-insensitive)
+            error_keywords = [
+                r'\berror\b', r'\bfail(ed|ure)?\b', r'\bexception\b', r'\bcrash(ed)?\b',
+                r'\bwarn(ing)?\b', r'\bcritical\b', r'\bfatal\b', r'\bpanic\b',
+                r'\b4\d{2}\b', r'\b5\d{2}\b',  # HTTP 4xx, 5xx codes
+                r'\btimeout\b', r'\brefused\b', r'\bdenied\b', r'\bunavailable\b'
+            ]
             
-            return f"""{start}
+            # Find all error positions
+            error_positions = []
+            for pattern in error_keywords:
+                for match in re.finditer(pattern, content, re.IGNORECASE):
+                    error_positions.append(match.start())
+            
+            if not error_positions:
+                # No errors found, fallback to original sampling
+                chunk_size = max_chars // 3
+                start = content[:chunk_size]
+                middle_pos = len(content) // 2 - chunk_size // 2
+                middle = content[middle_pos:middle_pos + chunk_size]
+                end = content[-chunk_size:]
+                return f"""{start}
 
 ... [MIDDLE SECTION - {len(content) - 2*chunk_size} characters omitted] ...
 
@@ -59,8 +76,61 @@ class LogAnalyzer:
 ... [CONTINUING - showing end of log] ...
 
 {end}"""
+            
+            # Extract context around each error (500 chars before/after)
+            error_sections = []
+            context_size = 500
+            
+            # Sort and deduplicate error positions
+            error_positions = sorted(set(error_positions))
+            
+            # Merge overlapping sections
+            merged_sections = []
+            for pos in error_positions:
+                start = max(0, pos - context_size)
+                end = min(len(content), pos + context_size)
+                
+                # Merge with previous section if overlapping
+                if merged_sections and start <= merged_sections[-1][1]:
+                    merged_sections[-1] = (merged_sections[-1][0], max(merged_sections[-1][1], end))
+                else:
+                    merged_sections.append((start, end))
+            
+            # Extract sections
+            for start, end in merged_sections:
+                error_sections.append(content[start:end])
+            
+            # Combine sections up to max_chars
+            combined = ""
+            section_count = 0
+            for section in error_sections:
+                if len(combined) + len(section) + 100 <= max_chars:  # +100 for separator
+                    if combined:
+                        combined += f"\n\n... [Section {section_count + 1}] ...\n\n"
+                    combined += section
+                    section_count += 1
+                else:
+                    break
+            
+            # If we have room, add beginning and end for context
+            remaining_space = max_chars - len(combined)
+            if remaining_space > 1000:
+                beginning = content[:min(500, remaining_space // 2)]
+                ending = content[-min(500, remaining_space // 2):]
+                return f"""[LOG BEGINNING]
+{beginning}
+
+... [ERROR-FOCUSED ANALYSIS - {section_count} error sections extracted] ...
+
+{combined}
+
+... [LOG ENDING] ...
+
+{ending}"""
+            
+            return combined
         
-        sampled_log = smart_sample_log(log_content, 30000)  # Increased from 10k to 30k!
+        sampled_log = error_aware_sample_log(log_content, 30000)  # Error-aware sampling!
         
         # Create analysis prompt
         if custom_prompt:

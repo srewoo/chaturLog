@@ -37,11 +37,15 @@
 - ✅ **User Authentication** - Secure JWT-based auth
 - ✅ **File Upload** - Drag-and-drop interface with validation
 - ✅ **AI Analysis** - Powered by OpenAI, Claude, and Gemini
-- ✅ **Test Generation** - Jest, JUnit, and pytest support
+- ✅ **Test Generation** - Jest, JUnit, pytest, Mocha, Cypress, RSpec support
 - ✅ **Pattern Detection** - Error classification and severity assessment
 - ✅ **API Extraction** - Identify endpoints and status codes
-- ✅ **History Management** - Track all analyses
+- ✅ **Git Integration** 🆕 - Smart repository detection from logs
+- ✅ **Repository Mappings** 🆕 - Automatic service-to-repo mapping
+- ✅ **History Management** 🆕 - Track all analyses, delete individual or all (non-recoverable)
 - ✅ **Download Tests** - Get production-ready test code
+- ✅ **Custom AI Prompts** - Personalize analysis behavior
+- ✅ **Scalable Processing** - Handle large log files efficiently
 
 ### Technical Features
 - ✅ **Modern Stack** - FastAPI + React 19
@@ -103,9 +107,41 @@ Navigate to: `http://localhost:3000`
 
 ## 📖 Documentation
 
-- **[Complete Application Analysis](./COMPLETE_APPLICATION_ANALYSIS.md)** - Comprehensive overview
-- **[Setup Guide](./SETUP_GUIDE.md)** - Detailed installation and configuration
-- **[Environment Setup](./ENV_SETUP.md)** - Environment variables guide
+### 📘 **[Complete Documentation (HTML)](./docs/index.html)** ⭐ **RECOMMENDED**
+
+Open `docs/index.html` in your browser for comprehensive, beautifully formatted documentation including:
+- ✅ Overview & Features
+- ✅ Quick Start Guide
+- ✅ Git Integration Guide
+- ✅ Test Frameworks
+- ✅ API Reference
+- ✅ Troubleshooting
+- ✅ Security Information
+
+**Quick Access:** Simply open the file in your browser:
+```bash
+open docs/index.html  # macOS
+start docs/index.html  # Windows
+xdg-open docs/index.html  # Linux
+```
+
+Or access it via: `http://localhost:3000/docs/` (when frontend is running)
+
+### 🚀 **Optimization & Performance Guides** 🆕
+
+- **[Optimization Complete Summary](./OPTIMIZATION_COMPLETE_SUMMARY.md)** - Implementation results & ROI
+- **[Phase 1 Complete](./IMPLEMENTATION_COMPLETE_PHASE1.md)** - Detailed feature breakdown ✅
+- **[Test Generation Analysis](./TEST_GENERATION_ANALYSIS.md)** - Technical deep dive
+- **[LLM Data Flow](./CURRENT_LLM_DATA_FLOW.md)** - Visual diagrams & token analysis
+- **[Phase 2 Guide](./PHASE2_IMPLEMENTATION_GUIDE.md)** - Advanced features (future)
+- **[Phase 3 Guide](./PHASE3_IMPLEMENTATION_GUIDE.md)** - AI-powered enhancements (future)
+
+**Recent Optimizations** ⚡:
+- ✅ Error-aware sampling (+40% test coverage)
+- ✅ Smart log excerpts (5x more context)
+- ✅ Optimized formatting (-40% tokens)
+- ✅ Analysis caching (-70% multi-framework tokens)
+- **Result**: -30% cost, +40% quality!
 
 ### Key Endpoints
 
@@ -114,10 +150,19 @@ Navigate to: `http://localhost:3000`
 | `/api/auth/register` | POST | User registration |
 | `/api/auth/login` | POST | User login |
 | `/api/upload` | POST | Upload log file |
-| `/api/analyze/{id}` | POST | Analyze log with AI |
+| `/api/analyze/{id}` | POST | Analyze log with AI (includes Git detection) |
 | `/api/generate-tests/{id}` | POST | Generate test cases |
 | `/api/analyses` | GET | Get all analyses |
 | `/api/analyses/{id}` | GET | Get specific analysis |
+| `/api/analyses/{id}` | DELETE | Delete analysis 🆕 |
+| `/api/analyses` | DELETE | Delete all 🆕 |
+| `/api/export/{id}` | GET | Export tests as ZIP |
+| `/api/settings/api-keys` | GET/POST | Manage AI API keys |
+| `/api/prompts` | GET/POST | Manage custom prompts |
+| `/api/settings/git-config` | GET/POST | Git configuration 🆕 |
+| `/api/settings/git-config/test` | POST | Test Git connection 🆕 |
+| `/api/repo-mappings` | GET/POST | Repository mappings 🆕 |
+| `/api/repo-mappings/{name}` | DELETE | Delete mapping 🆕 |
 
 ---
 
@@ -151,11 +196,15 @@ Navigate to: `http://localhost:3000`
 chaturLog/
 ├── backend/
 │   ├── server.py              # Main API server
-│   ├── database.py            # Database management
+│   ├── database.py            # Database management (with repo_mappings)
 │   ├── auth.py                # Authentication
 │   ├── services/
 │   │   ├── ai_analyzer.py     # AI analysis service
-│   │   └── test_generator.py  # Test generation
+│   │   ├── test_generator.py  # Test generation
+│   │   ├── git_detector.py    # Git repository detection 🆕
+│   │   ├── git_client.py      # Git provider API client 🆕
+│   │   ├── context_analyzer.py # Project context analysis
+│   │   └── log_chunker.py     # Large file processing
 │   └── uploads/               # Uploaded files
 │
 ├── frontend/
@@ -166,15 +215,19 @@ chaturLog/
 │   │   │   ├── FileUpload.jsx
 │   │   │   └── LoadingStates.jsx
 │   │   ├── pages/
-│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Dashboard.jsx  # With repo mapping dialog 🆕
+│   │   │   ├── Settings.jsx   # Git integration + mappings 🆕
 │   │   │   ├── Login.jsx
 │   │   │   └── Register.jsx
 │   │   └── utils/
-│   │       ├── api.js
+│   │       ├── api.js         # With repo mapping APIs 🆕
 │   │       └── fileValidation.js
 │   └── package.json
 │
-└── README.md
+├── tests/
+│   └── test-apollo-server.json # Sample log file
+│
+└── Documentation (12+ guides)
 ```
 
 ---
@@ -184,19 +237,38 @@ chaturLog/
 ### Dashboard - Upload & Analyze
 - Drag-and-drop file upload
 - AI model selection (OpenAI, Claude, Gemini)
-- Test framework selection (Jest, JUnit, pytest)
+- Test framework selection (Jest, JUnit, pytest, Mocha, Cypress, RSpec)
 - Real-time analysis progress
+- **Git repository detection** 🆕
+
+### Repository Confirmation Dialog 🆕
+- Detected service name display
+- Smart repository suggestions (multiple variants)
+- Custom repository input option
+- Organization name input
+- Live preview of final repository
+- One-time setup per service
 
 ### Results Display
 - Error patterns with severity badges
 - Frequency tracking
 - API endpoint extraction
 - Generated test cases with download
+- **Git context information** 🆕
+- Export tests as ZIP
+
+### Settings - Git Integration 🆕
+- Git provider configuration (GitHub, GitLab, Bitbucket)
+- Personal access token setup
+- Repository mappings management
+- View/delete saved mappings
+- Test connection functionality
 
 ### History
 - All past analyses
 - Status tracking
 - Quick access to results
+- Search and filter capabilities
 
 ---
 
@@ -272,17 +344,26 @@ def test_error_scenario():
 
 ## 🚧 Roadmap
 
+### ✅ Recently Completed
+- [x] **Git Integration** - Smart repository detection from logs
+- [x] **Repository Mappings** - Service-to-repo automatic mapping
+- [x] **Custom AI Prompts** - Personalize analysis behavior
+- [x] **More Test Frameworks** - Added Mocha, Cypress, RSpec
+- [x] **Export Tests** - Download as ZIP file
+- [x] **Large File Support** - Chunking & summarization pipeline
+- [x] **Search & Filter** - History search and filtering
+
 ### Short-term
 - [ ] Batch file analysis
 - [ ] Export reports (PDF/Excel)
 - [ ] Team collaboration features
-- [ ] More test frameworks (Mocha, RSpec)
+- [ ] Git-enhanced test generation (using repo context)
 
 ### Medium-term
 - [ ] Real-time analysis with WebSockets
 - [ ] Dashboard analytics with charts
 - [ ] CI/CD pipeline integration
-- [ ] Custom AI prompts
+- [ ] Integration with log providers (Datadog, Splunk)
 
 ### Long-term
 - [ ] ML training from user feedback

@@ -122,7 +122,7 @@ Respond with a JSON array of test cases:
 """
         else:
             # Use default prompt with STRONG framework emphasis
-            prompt = f"""
+           prompt = f"""
 ⚠️ CRITICAL: Generate test cases EXCLUSIVELY for {framework.upper()} framework! ⚠️
 
 TARGET FRAMEWORK: {framework.upper()}
@@ -270,7 +270,7 @@ DO NOT USE ANY PLACEHOLDER TEXT OR GENERIC ASSERTIONS.
                 elif self.provider == "google":
                     response = await self._call_google(strict_prompt, system_prompt)
                 
-                test_cases = self._parse_test_response(response, framework)
+            test_cases = self._parse_test_response(response, framework)
             
             return test_cases
         except Exception as e:
@@ -830,68 +830,115 @@ end
 ```
 """
     
-    def _format_patterns(self, patterns: List[Dict]) -> str:
-        """Format error patterns for prompt"""
+    def _format_patterns(self, patterns: List[Dict], limit: int = 10) -> str:
+        """
+        Format error patterns - OPTIMIZED for tokens
+        Sorts by severity, shows compact format
+        """
         if not patterns:
             return "No specific error patterns identified"
         
-        formatted = []
-        for i, pattern in enumerate(patterns[:10], 1):  # Limit to 10
-            formatted.append(f"{i}. {pattern.get('type', 'Unknown')}: {pattern.get('description', 'No description')}")
-            formatted.append(f"   Severity: {pattern.get('severity', 'medium')}, Frequency: {pattern.get('frequency', 1)}")
+        # Sort by severity (critical → high → medium → low) and frequency
+        severity_rank = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+        sorted_patterns = sorted(
+            patterns,
+            key=lambda x: (severity_rank.get(x.get('severity', 'medium'), 2), -x.get('frequency', 0))
+        )
         
-        if len(patterns) > 10:
-            formatted.append(f"... and {len(patterns) - 10} more patterns")
+        # Compact format (saves ~40% tokens)
+        formatted = [f"Total: {len(patterns)} patterns | Showing top {min(limit, len(patterns))} critical:\n"]
+        for i, p in enumerate(sorted_patterns[:limit], 1):
+            desc = p.get('description', 'No desc')[:80]  # Truncate long descriptions
+            formatted.append(
+                f"{i}. [{p.get('severity', 'med').upper()}] {p.get('type', 'error')}: "
+                f"{desc} (×{p.get('frequency', 1)})"
+            )
         
         return '\n'.join(formatted)
     
-    def _format_api_endpoints(self, endpoints: List[Dict]) -> str:
-        """Format API endpoints for prompt"""
+    def _format_api_endpoints(self, endpoints: List[Dict], limit: int = 10) -> str:
+        """
+        Format API endpoints - OPTIMIZED for tokens
+        Prioritizes endpoints with issues/errors
+        """
         if not endpoints:
             return "No API endpoints identified"
         
-        formatted = []
-        for i, ep in enumerate(endpoints[:15], 1):  # Limit to 15
-            method = ep.get('method', 'GET')
-            path = ep.get('path', '/')
+        # Sort by: has issues > status code (errors first) > frequency
+        def endpoint_priority(ep):
+            has_issues = 1 if ep.get('issues') else 0
             status = ep.get('status_codes', [])
-            issues = ep.get('issues', '')
-            formatted.append(f"{i}. {method} {path} → Status: {status}")
-            if issues:
-                formatted.append(f"   Issues: {issues}")
+            has_errors = 1 if any(int(s) >= 400 for s in status if str(s).isdigit()) else 0
+            return (-has_issues, -has_errors)
         
-        if len(endpoints) > 15:
-            formatted.append(f"... and {len(endpoints) - 15} more endpoints")
+        sorted_endpoints = sorted(endpoints, key=endpoint_priority)
+        
+        # Compact format
+        formatted = [f"Total: {len(endpoints)} endpoints | Showing top {min(limit, len(endpoints))}:\n"]
+        for i, ep in enumerate(sorted_endpoints[:limit], 1):
+            method = ep.get('method', 'GET')
+            path = ep.get('path', '/')[:40]  # Truncate long paths
+            status = ep.get('status_codes', [])
+            issues = ep.get('issues', '')[:60] if ep.get('issues') else ''
+            
+            line = f"{i}. {method} {path} [{status}]"
+            if issues:
+                line += f" ⚠️ {issues}"
+            formatted.append(line)
         
         return '\n'.join(formatted)
     
-    def _format_performance_issues(self, issues: List[Dict]) -> str:
-        """Format performance issues for prompt"""
+    def _format_performance_issues(self, issues: List[Dict], limit: int = 10) -> str:
+        """
+        Format performance issues - OPTIMIZED for tokens
+        Sorts by impact/frequency
+        """
         if not issues:
             return "No performance issues identified"
         
-        formatted = []
-        for i, issue in enumerate(issues[:10], 1):  # Limit to 10
-            formatted.append(f"{i}. {issue.get('issue', 'Unknown issue')}")
-            formatted.append(f"   Impact: {issue.get('impact', 'Unknown')}, Frequency: {issue.get('frequency', 'Unknown')}")
+        # Sort by impact severity
+        impact_rank = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+        sorted_issues = sorted(
+            issues,
+            key=lambda x: (impact_rank.get(str(x.get('impact', '')).lower(), 2), -x.get('frequency', 0))
+        )
         
-        if len(issues) > 10:
-            formatted.append(f"... and {len(issues) - 10} more issues")
+        # Compact format
+        formatted = [f"Total: {len(issues)} issues | Showing top {min(limit, len(issues))}:\n"]
+        for i, issue in enumerate(sorted_issues[:limit], 1):
+            desc = issue.get('issue', 'Unknown')[:70]
+            impact = issue.get('impact', 'Unknown')
+            freq = issue.get('frequency', '?')
+            formatted.append(f"{i}. {desc} | Impact: {impact}, Freq: {freq}x")
         
         return '\n'.join(formatted)
     
-    def _format_test_scenarios(self, scenarios: List[Dict]) -> str:
-        """Format test scenarios for prompt"""
+    def _format_test_scenarios(self, scenarios: List[Dict], limit: int = 10) -> str:
+        """
+        Format test scenarios - OPTIMIZED for tokens
+        Sorts by priority
+        """
         if not scenarios:
             return "No specific test scenarios suggested"
         
-        formatted = []
-        for i, scenario in enumerate(scenarios[:10], 1):  # Limit to 10
-            formatted.append(f"{i}. {scenario.get('scenario', 'Unknown scenario')}")
-            formatted.append(f"   Priority: {scenario.get('priority', 'medium')}")
+        # Sort by priority (high → medium → low)
+        priority_rank = {'high': 0, 'critical': 0, 'medium': 1, 'low': 2}
+        sorted_scenarios = sorted(
+            scenarios,
+            key=lambda x: priority_rank.get(str(x.get('priority', 'medium')).lower(), 1)
+        )
         
-        if len(scenarios) > 10:
-            formatted.append(f"... and {len(scenarios) - 10} more scenarios")
+        # Compact format
+        formatted = [f"Total: {len(scenarios)} scenarios | Showing top {min(limit, len(scenarios))}:\n"]
+        for i, scenario in enumerate(sorted_scenarios[:limit], 1):
+            desc = scenario.get('scenario', 'Unknown')[:80]
+            priority = scenario.get('priority', 'med')
+            framework = scenario.get('framework_hint', '')
+            
+            line = f"{i}. [{priority.upper()}] {desc}"
+            if framework:
+                line += f" ({framework})"
+            formatted.append(line)
         
         return '\n'.join(formatted)
     

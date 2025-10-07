@@ -9,9 +9,9 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
 import { Switch } from '../components/ui/switch';
-import { ArrowLeft, Save, Key, CheckCircle, FileText, Plus, Edit2, Trash2, Star } from 'lucide-react';
+import { ArrowLeft, Save, Key, CheckCircle, FileText, Plus, Edit2, Trash2, Star, GitBranch, Lock } from 'lucide-react';
 import axios from 'axios';
-import { getPrompts, createPrompt, updatePrompt, deletePrompt } from '../utils/api';
+import { getPrompts, createPrompt, updatePrompt, deletePrompt, getRepoMappings, deleteRepoMapping } from '../utils/api';
 
 const API_BASE = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -38,6 +38,18 @@ export default function Settings() {
     test_generation_prompt: '',
     is_default: false
   });
+
+  // Git Integration state
+  const [gitProvider, setGitProvider] = useState('github');
+  const [gitRepository, setGitRepository] = useState('');
+  const [gitToken, setGitToken] = useState('');
+  const [gitBranch, setGitBranch] = useState('main');
+  const [gitEnabled, setGitEnabled] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionResult, setConnectionResult] = useState(null);
+  
+  // Repository mappings state
+  const [repoMappings, setRepoMappings] = useState([]);
 
   // Default prompt templates
   const defaultPrompts = [
@@ -133,6 +145,8 @@ Extract:
   useEffect(() => {
     loadApiKeys();
     loadPrompts();
+    loadGitConfig();
+    loadRepoMappings();
   }, []);
 
   const loadApiKeys = async () => {
@@ -180,6 +194,114 @@ Extract:
       setError(err.response?.data?.detail || 'Failed to save API keys');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Git Configuration functions
+  const loadGitConfig = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE}/settings/git-config`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        const config = response.data.git_config;
+        setGitProvider(config.git_provider || 'github');
+        setGitRepository(config.repository || '');
+        setGitToken(config.git_token || '');
+        setGitBranch(config.default_branch || 'main');
+        setGitEnabled(config.enabled || false);
+      }
+    } catch (err) {
+      console.error('Failed to load Git configuration:', err);
+    }
+  };
+
+  const handleSaveGitConfig = async () => {
+    setLoading(true);
+    setSuccess('');
+    setError('');
+    setConnectionResult(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_BASE}/settings/git-config`,
+        {
+          git_provider: gitProvider,
+          repository: gitRepository,
+          git_token: gitToken,
+          default_branch: gitBranch,
+          enabled: gitEnabled
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (response.data.success) {
+        setSuccess('Git configuration saved successfully!');
+        setTimeout(() => setSuccess(''), 3000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save Git configuration');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionResult(null);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_BASE}/settings/git-config/test`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setConnectionResult(response.data);
+    } catch (err) {
+      setConnectionResult({
+        success: false,
+        message: err.response?.data?.detail || 'Failed to test connection'
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // Repository mappings functions
+  const loadRepoMappings = async () => {
+    try {
+      const response = await getRepoMappings();
+      if (response.success) {
+        setRepoMappings(response.mappings || []);
+      }
+    } catch (err) {
+      console.error('Failed to load repository mappings:', err);
+    }
+  };
+
+  const handleDeleteMapping = async (serviceName) => {
+    if (!window.confirm(`Delete mapping for ${serviceName}?`)) {
+      return;
+    }
+
+    try {
+      await deleteRepoMapping(serviceName);
+      setSuccess(`Mapping deleted for ${serviceName}`);
+      setTimeout(() => setSuccess(''), 3000);
+      loadRepoMappings();
+    } catch (err) {
+      setError('Failed to delete mapping');
+      console.error('Delete mapping error:', err);
     }
   };
 
@@ -304,10 +426,14 @@ Extract:
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="api-keys" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-3xl grid-cols-3">
             <TabsTrigger value="api-keys" data-testid="api-keys-tab">
               <Key className="h-4 w-4 mr-2" />
               API Keys
+            </TabsTrigger>
+            <TabsTrigger value="git-integration" data-testid="git-integration-tab">
+              <GitBranch className="h-4 w-4 mr-2" />
+              Git Integration
             </TabsTrigger>
             <TabsTrigger value="prompts" data-testid="prompts-tab">
               <FileText className="h-4 w-4 mr-2" />
@@ -458,6 +584,263 @@ Extract:
                     <li>• You can update or remove keys anytime</li>
                   </ul>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Git Integration Tab */}
+          <TabsContent value="git-integration">
+            <Card>
+              <CardHeader>
+                <CardTitle>Git Repository Integration</CardTitle>
+                <CardDescription>
+                  Connect ChaturLog to your Git repository for enhanced analysis and context-aware test generation.
+                  ChaturLog will have READ-ONLY access to your repository.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Enable Git Integration */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="flex items-center space-x-3">
+                    <Lock className="h-5 w-5 text-slate-600" />
+                    <div>
+                      <h3 className="font-medium text-slate-900">Enable Git Integration</h3>
+                      <p className="text-sm text-slate-500">Connect to your repository for better analysis</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={gitEnabled}
+                    onCheckedChange={setGitEnabled}
+                    data-testid="git-enabled-switch"
+                  />
+                </div>
+
+                {/* Git Provider Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="git-provider">Git Provider</Label>
+                  <select
+                    id="git-provider"
+                    value={gitProvider}
+                    onChange={(e) => setGitProvider(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    data-testid="git-provider-select"
+                  >
+                    <option value="github">GitHub</option>
+                    <option value="gitlab">GitLab</option>
+                    <option value="bitbucket">Bitbucket</option>
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    Select your Git hosting provider
+                  </p>
+                </div>
+
+                {/* Repository Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="git-repository">
+                    Repository
+                    <span className="text-sm text-slate-500 ml-2">(org/repo format)</span>
+                  </Label>
+                  <Input
+                    id="git-repository"
+                    type="text"
+                    placeholder="e.g., myorg/myapp"
+                    value={gitRepository}
+                    onChange={(e) => setGitRepository(e.target.value)}
+                    data-testid="git-repository-input"
+                  />
+                  <p className="text-xs text-slate-500">
+                    The repository will be auto-detected from logs if not specified
+                  </p>
+                </div>
+
+                {/* Personal Access Token */}
+                <div className="space-y-2">
+                  <Label htmlFor="git-token">
+                    Personal Access Token (READ-ONLY)
+                  </Label>
+                  <Input
+                    id="git-token"
+                    type="password"
+                    placeholder="ghp_... or glpat-... or ..."
+                    value={gitToken}
+                    onChange={(e) => setGitToken(e.target.value)}
+                    data-testid="git-token-input"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Get your token from:{' '}
+                    {gitProvider === 'github' && (
+                      <a
+                        href="https://github.com/settings/tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        GitHub Settings → Developer settings → Personal access tokens
+                      </a>
+                    )}
+                    {gitProvider === 'gitlab' && (
+                      <a
+                        href="https://gitlab.com/-/profile/personal_access_tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        GitLab Profile → Access Tokens
+                      </a>
+                    )}
+                    {gitProvider === 'bitbucket' && (
+                      <a
+                        href="https://bitbucket.org/account/settings/app-passwords/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Bitbucket Personal Settings → App passwords
+                      </a>
+                    )}
+                  </p>
+                </div>
+
+                {/* Default Branch */}
+                <div className="space-y-2">
+                  <Label htmlFor="git-branch">Default Branch</Label>
+                  <Input
+                    id="git-branch"
+                    type="text"
+                    placeholder="main"
+                    value={gitBranch}
+                    onChange={(e) => setGitBranch(e.target.value)}
+                    data-testid="git-branch-input"
+                  />
+                  <p className="text-xs text-slate-500">
+                    The default branch to read code from (usually 'main' or 'master')
+                  </p>
+                </div>
+
+                {/* Required Permissions Notice */}
+                <Alert>
+                  <Lock className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Required Token Permissions:</strong>
+                    <ul className="mt-2 ml-4 list-disc text-sm space-y-1">
+                      <li><strong>GitHub:</strong> <code>repo:read</code> (read repository contents)</li>
+                      <li><strong>GitLab:</strong> <code>read_repository</code></li>
+                      <li><strong>Bitbucket:</strong> <code>repository:read</code></li>
+                    </ul>
+                    <p className="mt-2 text-sm">
+                      ⚠️ ChaturLog only requires READ access. Never grant write permissions.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+
+                {/* Test Connection Button */}
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={handleTestConnection}
+                    variant="outline"
+                    disabled={testingConnection || !gitToken || !gitRepository}
+                    data-testid="test-connection-button"
+                  >
+                    {testingConnection ? 'Testing...' : 'Test Connection'}
+                  </Button>
+                  <Button
+                    onClick={handleSaveGitConfig}
+                    disabled={loading}
+                    data-testid="save-git-config-button"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {loading ? 'Saving...' : 'Save Configuration'}
+                  </Button>
+                </div>
+
+                {/* Connection Test Result */}
+                {connectionResult && (
+                  <Alert variant={connectionResult.success ? "default" : "destructive"}>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>{connectionResult.success ? 'Success!' : 'Error:'}</strong>
+                      <p className="mt-1">{connectionResult.message}</p>
+                      {connectionResult.success && connectionResult.repository_info && (
+                        <div className="mt-3 text-sm space-y-1">
+                          <p><strong>Repository:</strong> {connectionResult.repository_info.name}</p>
+                          <p><strong>Default Branch:</strong> {connectionResult.repository_info.default_branch}</p>
+                          <p><strong>Language:</strong> {connectionResult.repository_info.language || 'N/A'}</p>
+                          <p><strong>Private:</strong> {connectionResult.repository_info.private ? 'Yes' : 'No'}</p>
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Success/Error Messages */}
+                {success && (
+                  <Alert>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription>{success}</AlertDescription>
+                  </Alert>
+                )}
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+            
+            {/* Repository Mappings Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Repository Mappings</CardTitle>
+                <CardDescription>
+                  Saved mappings between service names and Git repositories. These are automatically applied during log analysis.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {repoMappings.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No repository mappings yet</p>
+                    <p className="text-sm mt-1">
+                      Mappings will be created automatically when ChaturLog detects service names in your logs
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {repoMappings.map((mapping) => (
+                      <div
+                        key={mapping.service_name}
+                        className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <GitBranch className="h-4 w-4 text-slate-400" />
+                            <div>
+                              <p className="font-medium text-slate-900">
+                                <code className="bg-slate-100 px-2 py-1 rounded text-sm">
+                                  {mapping.service_name}
+                                </code>
+                              </p>
+                              <p className="text-sm text-slate-600 mt-1">
+                                → <span className="font-mono">{mapping.repository}</span>
+                              </p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                Created: {new Date(mapping.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteMapping(mapping.service_name)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

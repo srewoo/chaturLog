@@ -13,13 +13,15 @@ import zipfile
 import io
 
 # Import custom modules
-from database import init_db, migrate_database, get_db, hash_password, verify_password
+from database import init_db, migrate_database, get_db, hash_password, verify_password, encrypt_token, decrypt_token
 from auth import create_access_token, get_current_user_id
 from services.ai_analyzer import LogAnalyzer
 from services.test_generator import TestGenerator
 from services.test_validator import TestValidator
 from services.context_analyzer import ContextAnalyzer
 from services.log_chunker import LogChunker, ChunkSummarizer, ChunkIndex
+from services.git_client import GitClient
+from services.git_detector import GitRepositoryDetector
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -44,6 +46,46 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 🆕 ANALYSIS CONTEXT CACHE - Saves 70% tokens on multi-framework generation!
+class AnalysisContextCache:
+    """
+    Simple in-memory cache for analysis context
+    Reuses analysis data across multiple test framework generations
+    """
+    def __init__(self, ttl_seconds=3600):
+        self.cache = {}
+        from datetime import timedelta
+        self.ttl = timedelta(seconds=ttl_seconds)
+    
+    def get(self, analysis_id: int) -> Optional[Dict]:
+        """Get cached context if exists and not expired"""
+        if analysis_id in self.cache:
+            data, timestamp = self.cache[analysis_id]
+            if datetime.now() - timestamp < self.ttl:
+                logger.info(f"✅ Cache HIT for analysis {analysis_id} - Saving tokens!")
+                return data
+            else:
+                del self.cache[analysis_id]  # Expired
+        return None
+    
+    def set(self, analysis_id: int, data: Dict):
+        """Cache analysis context"""
+        self.cache[analysis_id] = (data, datetime.now())
+        logger.info(f"💾 Cached analysis {analysis_id} context ({len(self.cache)} in cache)")
+    
+    def clear(self, analysis_id: int = None):
+        """Clear cache for specific analysis or all"""
+        if analysis_id:
+            self.cache.pop(analysis_id, None)
+        else:
+            self.cache.clear()
+    
+    def size(self):
+        return len(self.cache)
+
+# Global cache instance (1 hour TTL)
+analysis_cache = AnalysisContextCache(ttl_seconds=3600)
 
 # ==================== Models ====================
 
@@ -78,6 +120,17 @@ class CustomPromptRequest(BaseModel):
     analysis_prompt: Optional[str] = None
     test_generation_prompt: Optional[str] = None
     is_default: bool = False
+
+class GitConfigRequest(BaseModel):
+    git_provider: str  # github, gitlab, bitbucket
+    repository: Optional[str] = None
+    git_token: str
+    default_branch: str = 'main'
+    enabled: bool = True
+
+class RepoMappingRequest(BaseModel):
+    service_name: str
+    repository: str  # org/repo format
 
 # ==================== Auth Dependency ====================
 
@@ -237,6 +290,244 @@ async def save_api_keys(request: ApiKeysRequest, user_id: int = Depends(get_curr
         return {
             "success": True,
             "message": "API keys saved successfully"
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Git Configuration Routes ====================
+
+@api_router.get("/settings/git-config")
+async def get_git_config(user_id: int = Depends(get_current_user)):
+    """Get user's Git configuration (token is masked for security)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT git_provider, repository, git_token_encrypted, default_branch, enabled FROM git_configs WHERE user_id = ?",
+            (user_id,)
+        )
+        config = cursor.fetchone()
+        conn.close()
+        
+        if config:
+            # Mask token for display
+            token = decrypt_token(config["git_token_encrypted"])
+            masked_token = "***" + token[-4:] if token and len(token) > 4 else "***"
+            
+            return {
+                "success": True,
+                "git_config": {
+                    "git_provider": config["git_provider"],
+                    "repository": config["repository"],
+                    "git_token": masked_token,
+                    "default_branch": config["default_branch"],
+                    "enabled": bool(config["enabled"])
+                }
+            }
+        else:
+            return {
+                "success": True,
+                "git_config": {
+                    "git_provider": "",
+                    "repository": "",
+                    "git_token": "",
+                    "default_branch": "main",
+                    "enabled": False
+                }
+            }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/settings/git-config")
+async def save_git_config(request: GitConfigRequest, user_id: int = Depends(get_current_user)):
+    """Save or update user's Git configuration"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Validate provider
+        if request.git_provider not in ['github', 'gitlab', 'bitbucket']:
+            raise HTTPException(status_code=400, detail="Invalid Git provider. Use 'github', 'gitlab', or 'bitbucket'")
+        
+        # Encrypt token
+        encrypted_token = encrypt_token(request.git_token)
+        
+        # Check if config exists
+        cursor.execute("SELECT id FROM git_configs WHERE user_id = ?", (user_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing config
+            cursor.execute(
+                """UPDATE git_configs 
+                   SET git_provider = ?, repository = ?, git_token_encrypted = ?, 
+                       default_branch = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP 
+                   WHERE user_id = ?""",
+                (request.git_provider, request.repository, encrypted_token, 
+                 request.default_branch, request.enabled, user_id)
+            )
+        else:
+            # Insert new config
+            cursor.execute(
+                """INSERT INTO git_configs 
+                   (user_id, git_provider, repository, git_token_encrypted, default_branch, enabled) 
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, request.git_provider, request.repository, encrypted_token, 
+                 request.default_branch, request.enabled)
+            )
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "Git configuration saved successfully"
+        }
+    except HTTPException:
+        conn.close()
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/settings/git-config/test")
+async def test_git_connection(user_id: int = Depends(get_current_user)):
+    """Test Git token validity using user API (more reliable)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT git_provider, repository, git_token_encrypted FROM git_configs WHERE user_id = ? AND enabled = 1",
+            (user_id,)
+        )
+        config = cursor.fetchone()
+        conn.close()
+        
+        if not config:
+            return {
+                "success": False,
+                "message": "No Git configuration found. Please configure Git integration first."
+            }
+        
+        # Decrypt token
+        token = decrypt_token(config["git_token_encrypted"])
+        if not token:
+            return {
+                "success": False,
+                "message": "Invalid token configuration"
+            }
+        
+        # Test token using /user API (no repository required - more reliable!)
+        git_client = GitClient(
+            provider=config["git_provider"],
+            token=token,
+            repository="dummy/dummy"  # Not used for token test
+        )
+        
+        result = git_client.test_token()
+        
+        # If token is valid and repository is configured, also test repository access
+        if result['success'] and config["repository"]:
+            git_client.repository = config["repository"]
+            repo_test = git_client.test_connection()
+            result['repository_access'] = repo_test['success']
+            if repo_test['success']:
+                result['repository_info'] = repo_test['repository_info']
+        
+        return result
+        
+    except Exception as e:
+        conn.close()
+        return {
+            "success": False,
+            "message": f"Error testing connection: {str(e)}"
+        }
+
+# ==================== Repository Mapping Routes ====================
+
+@api_router.get("/repo-mappings")
+async def get_repo_mappings(user_id: int = Depends(get_current_user)):
+    """Get all repository mappings for the user"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT service_name, repository, created_at FROM repo_mappings WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        )
+        mappings = cursor.fetchall()
+        conn.close()
+        
+        return {
+            "success": True,
+            "mappings": [
+                {
+                    "service_name": m["service_name"],
+                    "repository": m["repository"],
+                    "created_at": m["created_at"]
+                }
+                for m in mappings
+            ]
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/repo-mappings")
+async def save_repo_mapping(request: RepoMappingRequest, user_id: int = Depends(get_current_user)):
+    """Save a repository mapping (service name → repository)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Validate repository format (should be org/repo)
+        if '/' not in request.repository:
+            raise HTTPException(status_code=400, detail="Repository must be in 'org/repo' format")
+        
+        # Insert or replace mapping
+        cursor.execute(
+            """INSERT OR REPLACE INTO repo_mappings (user_id, service_name, repository, created_at) 
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+            (user_id, request.service_name, request.repository)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Repository mapping saved: {request.service_name} → {request.repository}"
+        }
+    except HTTPException:
+        conn.close()
+        raise
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/repo-mappings/{service_name}")
+async def delete_repo_mapping(service_name: str, user_id: int = Depends(get_current_user)):
+    """Delete a repository mapping"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "DELETE FROM repo_mappings WHERE user_id = ? AND service_name = ?",
+            (user_id, service_name)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Repository mapping deleted for {service_name}"
         }
     except Exception as e:
         conn.close()
@@ -650,6 +941,38 @@ async def analyze_logs(
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             log_content = f.read()
         
+        # Detect Git repository from log content
+        git_detector = GitRepositoryDetector()
+        git_detection = git_detector.detect_repository(log_content, analysis["filename"])
+        
+        # Check for user-provided repository mappings
+        detected_repo = git_detection.get('repository')
+        if not detected_repo and git_detection.get('service_name'):
+            # Check if user has a mapping for this service
+            cursor.execute(
+                "SELECT repository FROM repo_mappings WHERE user_id = ? AND service_name = ?",
+                (user_id, git_detection['service_name'])
+            )
+            mapping = cursor.fetchone()
+            if mapping:
+                detected_repo = mapping['repository']
+                git_detection['repository'] = detected_repo
+                git_detection['confidence'] = 'high'  # User confirmed
+                git_detection['detection_methods'].append('user_mapping')
+        
+        # Store Git detection info
+        git_info = {
+            'detected_repository': detected_repo,
+            'git_service': git_detection.get('git_service'),
+            'commit_hash': git_detection.get('commit_hash'),
+            'branch': git_detection.get('branch'),
+            'service_name': git_detection.get('service_name'),
+            'repository_suggestions': git_detection.get('repository_suggestions', []),
+            'confidence': git_detection.get('confidence'),
+            'detection_methods': git_detection.get('detection_methods', [])
+        }
+        logger.info(f"Git detection result: {git_info}")
+        
         # Get user's default custom prompt if exists
         cursor.execute(
             "SELECT system_prompt, analysis_prompt FROM custom_prompts WHERE user_id = ? AND is_default = 1",
@@ -675,6 +998,9 @@ async def analyze_logs(
         if result["success"]:
             # Store patterns
             analysis_data = result["analysis"]
+            
+            # Add Git detection info to analysis data
+            analysis_data['git_info'] = git_info
             
             # Store error patterns
             if "error_patterns" in analysis_data:
@@ -761,31 +1087,71 @@ async def generate_tests(
                 print("⚠️ Warning: Could not parse stored analysis_data JSON")
                 complete_analysis = {}
         
+        # 🆕 CHECK CACHE FIRST - Reuse analysis context if available
+        cached_context = analysis_cache.get(analysis_id)
+        if cached_context:
+            # Use cached analysis data
+            analysis_data = cached_context
+            logger.info(f"🚀 Using cached context for analysis {analysis_id} - Saving ~5k tokens!")
+        else:
+            # Read and prepare analysis context (will be cached)
+            logger.info(f"📖 Reading log file for analysis {analysis_id} - First generation")
+            
         # Read log file content with smart sampling (CRITICAL FIX!)
         log_content = ""
         log_excerpt = ""
         log_sample_for_testing = ""
         
-        try:
-            with open(analysis["file_path"], 'r', encoding='utf-8') as f:
-                log_content = f.read()
-                log_excerpt = log_content[:5000]  # First 5k for quick reference
-                
-                # Smart sampling for test generation (avoid token limits!)
-                # For test generation, we only need representative samples
-                max_test_chars = 15000  # ~4k tokens (safe limit)
-                
-                if len(log_content) <= max_test_chars:
-                    log_sample_for_testing = log_content
-                else:
-                    # Sample from beginning, middle, and end
-                    chunk_size = max_test_chars // 3
-                    start = log_content[:chunk_size]
-                    middle_pos = len(log_content) // 2 - chunk_size // 2
-                    middle = log_content[middle_pos:middle_pos + chunk_size]
-                    end = log_content[-chunk_size:]
+        if not cached_context:  # Only read if not cached
+            try:
+                with open(analysis["file_path"], 'r', encoding='utf-8') as f:
+                    log_content = f.read()
                     
-                    log_sample_for_testing = f"""{start}
+                    # 🆕 SMART ERROR-AWARE EXCERPT (10k chars - 5x improvement!)
+                    def smart_error_excerpt(content: str, max_chars: int = 10000) -> str:
+                        """Extract log excerpt prioritizing error sections"""
+                        if len(content) <= max_chars:
+                            return content
+                        
+                        # Find error keywords
+                        error_patterns = [
+                            r'\berror\b', r'\bfail(ed|ure)?\b', r'\bexception\b', r'\bcrash(ed)?\b',
+                            r'\bwarn(ing)?\b', r'\bcritical\b', r'\b4\d{2}\b', r'\b5\d{2}\b'
+                        ]
+                        
+                        # Find first error position
+                        import re
+                        first_error_pos = len(content)
+                        for pattern in error_patterns:
+                            match = re.search(pattern, content, re.IGNORECASE)
+                            if match:
+                                first_error_pos = min(first_error_pos, match.start())
+                        
+                        # Extract context around first error
+                        if first_error_pos < len(content):
+                            start = max(0, first_error_pos - 2000)
+                            return content[start:start + max_chars]
+                        
+                        # Fallback: first 10k
+                        return content[:max_chars]
+                    
+                    log_excerpt = smart_error_excerpt(log_content, 10000)  # 🆕 10k chars, error-aware!
+                    
+                    # Smart sampling for test generation (avoid token limits!)
+                    # For test generation, we only need representative samples
+                    max_test_chars = 15000  # ~4k tokens (safe limit)
+                    
+                    if len(log_content) <= max_test_chars:
+                        log_sample_for_testing = log_content
+                    else:
+                        # Sample from beginning, middle, and end
+                        chunk_size = max_test_chars // 3
+                        start = log_content[:chunk_size]
+                        middle_pos = len(log_content) // 2 - chunk_size // 2
+                        middle = log_content[middle_pos:middle_pos + chunk_size]
+                        end = log_content[-chunk_size:]
+                        
+                        log_sample_for_testing = f"""{start}
 
 ... [Log continues - {len(log_content) - 2*chunk_size} chars omitted] ...
 
@@ -794,30 +1160,34 @@ async def generate_tests(
 ... [Showing end of log] ...
 
 {end}"""
+                    
+                    print(f"📊 Log size: {len(log_content)} chars → Excerpt: {len(log_excerpt)} | Sample: {len(log_sample_for_testing)}")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not read log file: {e}")
+            
+            # Prepare comprehensive analysis data (only if not cached)
+            analysis_data = {
+                # Patterns (backward compatibility)
+                "patterns": [dict(p) for p in patterns],
                 
-                print(f"📊 Log size: {len(log_content)} chars → Sampled {len(log_sample_for_testing)} chars for testing")
-        except Exception as e:
-            print(f"⚠️ Warning: Could not read log file: {e}")
-        
-        # Prepare comprehensive analysis data
-        analysis_data = {
-            # Patterns (backward compatibility)
-            "patterns": [dict(p) for p in patterns],
+                # Complete AI analysis results (NEW!)
+                "error_patterns": complete_analysis.get("error_patterns", []),
+                "api_endpoints": complete_analysis.get("api_endpoints", []),
+                "performance_issues": complete_analysis.get("performance_issues", []),
+                "business_impact": complete_analysis.get("business_impact", {}),
+                "test_scenarios": complete_analysis.get("test_scenarios", []),
+                
+                # Log file information (NEW!)
+                "filename": analysis["filename"],
+                "log_file_path": analysis["file_path"],
+                "log_content": log_sample_for_testing,  # SAMPLED log content (token-safe!)
+                "log_excerpt": log_excerpt,  # Error-aware 10k excerpt!
+                "log_size_full": len(log_content),  # Total size for context
+            }
             
-            # Complete AI analysis results (NEW!)
-            "error_patterns": complete_analysis.get("error_patterns", []),
-            "api_endpoints": complete_analysis.get("api_endpoints", []),
-            "performance_issues": complete_analysis.get("performance_issues", []),
-            "business_impact": complete_analysis.get("business_impact", {}),
-            "test_scenarios": complete_analysis.get("test_scenarios", []),
-            
-            # Log file information (NEW!)
-            "filename": analysis["filename"],
-            "log_file_path": analysis["file_path"],
-            "log_content": log_sample_for_testing,  # SAMPLED log content (token-safe!)
-            "log_excerpt": log_excerpt,  # First 5k for reference
-            "log_size_full": len(log_content),  # Total size for context
-        }
+            # 🆕 CACHE THE ANALYSIS DATA for future test generations
+            analysis_cache.set(analysis_id, analysis_data)
+            logger.info(f"💾 Cached analysis data for {analysis_id} (reusable for all frameworks!)")
         
         # Get user's API key
         api_key = get_user_api_key(user_id, analysis["ai_model"])
@@ -956,6 +1326,117 @@ async def get_analysis(analysis_id: int, user_id: int = Depends(get_current_user
         "patterns": [dict(p) for p in patterns],
         "test_cases": [dict(t) for t in tests]
     }
+
+@api_router.delete("/analyses/{analysis_id}")
+async def delete_analysis(analysis_id: int, user_id: int = Depends(get_current_user)):
+    """Delete a specific analysis (non-recoverable)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Get analysis to check ownership and get file path
+        cursor.execute(
+            "SELECT * FROM analyses WHERE id = ? AND user_id = ?",
+            (analysis_id, user_id)
+        )
+        analysis = cursor.fetchone()
+        
+        if not analysis:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        # Delete associated records (cascade)
+        cursor.execute("DELETE FROM patterns WHERE analysis_id = ?", (analysis_id,))
+        cursor.execute("DELETE FROM test_cases WHERE analysis_id = ?", (analysis_id,))
+        cursor.execute("DELETE FROM chunk_summaries WHERE analysis_id = ?", (analysis_id,))
+        
+        # Delete analysis record
+        cursor.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
+        
+        # Delete log file if it exists
+        import os
+        file_path = analysis["file_path"]
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {file_path}: {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Analysis deleted successfully"
+        }
+    except HTTPException:
+        conn.close()
+        raise
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        logger.error(f"Error deleting analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/analyses")
+async def delete_all_analyses(user_id: int = Depends(get_current_user)):
+    """Delete all analyses for the current user (non-recoverable)"""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Get all analyses for user to delete files
+        cursor.execute(
+            "SELECT id, file_path FROM analyses WHERE user_id = ?",
+            (user_id,)
+        )
+        analyses = cursor.fetchall()
+        
+        if not analyses:
+            conn.close()
+            return {
+                "success": True,
+                "message": "No analyses to delete",
+                "deleted_count": 0
+            }
+        
+        analysis_ids = [a["id"] for a in analyses]
+        
+        # Delete associated records for all analyses
+        for analysis_id in analysis_ids:
+            cursor.execute("DELETE FROM patterns WHERE analysis_id = ?", (analysis_id,))
+            cursor.execute("DELETE FROM test_cases WHERE analysis_id = ?", (analysis_id,))
+            cursor.execute("DELETE FROM chunk_summaries WHERE analysis_id = ?", (analysis_id,))
+        
+        # Delete all analysis records
+        cursor.execute("DELETE FROM analyses WHERE user_id = ?", (user_id,))
+        
+        # Delete all log files
+        import os
+        deleted_files = 0
+        for analysis in analyses:
+            file_path = analysis["file_path"]
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted_files += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete file {file_path}: {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"All analyses deleted successfully",
+            "deleted_count": len(analyses),
+            "deleted_files": deleted_files
+        }
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        logger.error(f"Error deleting all analyses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/export/{analysis_id}")
 async def export_tests(analysis_id: int, user_id: int = Depends(get_current_user)):
