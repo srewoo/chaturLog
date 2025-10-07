@@ -358,7 +358,8 @@ Be concise - this is one chunk of many.
                 'performance_issues': [],
                 'key_patterns': [],
                 'severity': 'unknown',
-                'line_range': (chunk['start_line'], chunk['end_line'])
+                'line_range': (chunk['start_line'], chunk['end_line']),
+                'timestamp_range': chunk.get('timestamp_range', (None, None))
             }
     
     async def _call_openai(self, prompt: str) -> str:

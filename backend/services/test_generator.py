@@ -122,18 +122,28 @@ Respond with a JSON array of test cases:
 """
         else:
             # Use default prompt with STRONG framework emphasis
-           prompt = f"""
+            prompt = f"""
 ⚠️ CRITICAL: Generate test cases EXCLUSIVELY for {framework.upper()} framework! ⚠️
 
 TARGET FRAMEWORK: {framework.upper()}
 LANGUAGE: {"JavaScript/TypeScript" if framework.lower() in ['jest', 'mocha', 'cypress'] else "Python" if framework.lower() == 'pytest' else "Java" if framework.lower() == 'junit' else "Ruby" if framework.lower() == 'rspec' else "Unknown"}
 
-IMPORTANT INSTRUCTIONS:
-❌ DO NOT return template code with placeholders like "Add your test logic here"
-❌ DO NOT return generic examples with "expect(true).toBe(true)"
-✅ DO generate REAL, EXECUTABLE tests based on the actual log analysis data below
-✅ DO write tests that validate the specific errors, patterns, and issues found in the logs
-✅ DO create meaningful assertions that test actual conditions from the log file
+🚫 ABSOLUTELY FORBIDDEN - YOU WILL BE REJECTED IF YOU INCLUDE ANY OF THESE:
+❌ expect(true).toBe(true) or expect(true).to.be.true or assert True
+❌ "Add your test logic here" or "TODO" or "FIXME" comments
+❌ "Sample Test", "Example Test", or generic test names
+❌ Placeholder values like "value", "data", "test" without specifics
+❌ Generic endpoint names like "/api/endpoint" instead of actual endpoints
+❌ Comments saying "Replace with" or "Update with"
+❌ Tests shorter than 10 lines of actual code
+
+✅ REQUIRED - EVERY TEST MUST INCLUDE:
+✅ SPECIFIC error types/codes from logs (e.g., "TypeError: undefined", "500 Internal Server Error")
+✅ ACTUAL API endpoints from analysis (e.g., "/api/users/123", "/health/check")
+✅ REAL values from log data (timestamps, IDs, error messages)
+✅ Descriptive test names referencing EXACT log scenarios
+✅ Assertions validating SPECIFIC conditions from the analysis
+✅ At least 15-20 lines of meaningful test code per test
 
 Based on the following log analysis, generate comprehensive test cases using {framework.upper()}:
 
@@ -370,33 +380,37 @@ DO NOT USE ANY PLACEHOLDER TEXT OR GENERIC ASSERTIONS.
         # Framework-specific validation patterns
         validation_patterns = {
             'jest': [
-                (r'import.*from.*[\'"]jest[\'"]', True),  # Jest imports
-                (r'describe\s*\(', True),  # Describe blocks
-                (r'(test|it)\s*\(', True),  # Test blocks
-                (r'expect\s*\(', True),  # Assertions
+                # Jest uses global functions, doesn't require jest imports
+                (r'describe\s*\(', True),  # Describe blocks (required)
+                (r'(test|it)\s*\(', True),  # Test blocks (required)
+                (r'expect\s*\(', True),  # Assertions (required)
                 (r'import\s+pytest', False),  # Should NOT have pytest
                 (r'@pytest', False),  # Should NOT have pytest decorators
+                (r'def\s+test_', False),  # Should NOT have Python test functions
             ],
             'mocha': [
-                (r'describe\s*\(', True),
-                (r'it\s*\(', True),
-                (r'(expect|assert)', True),
-                (r'import\s+pytest', False),
-                (r'@pytest', False),
+                (r'describe\s*\(', True),  # Describe blocks (required)
+                (r'it\s*\(', True),  # Test blocks (required)
+                (r'(expect|assert)', True),  # Assertions (required)
+                (r'import\s+pytest', False),  # Should NOT have pytest
+                (r'@pytest', False),  # Should NOT have pytest decorators
+                (r'def\s+test_', False),  # Should NOT have Python test functions
             ],
             'cypress': [
-                (r'cy\.', True),  # Cypress commands
-                (r'describe\s*\(', True),
-                (r'it\s*\(', True),
-                (r'import\s+pytest', False),
-                (r'@pytest', False),
+                (r'cy\.', True),  # Cypress commands (required)
+                (r'describe\s*\(', True),  # Describe blocks (required)
+                (r'it\s*\(', True),  # Test blocks (required)
+                (r'import\s+pytest', False),  # Should NOT have pytest
+                (r'@pytest', False),  # Should NOT have pytest decorators
+                (r'def\s+test_', False),  # Should NOT have Python test functions
             ],
             'pytest': [
-                (r'import\s+pytest', True),  # Pytest imports
-                (r'def\s+test_', True),  # Test functions
-                (r'@pytest', True),  # Pytest decorators (optional but common)
+                (r'import\s+pytest', True),  # Pytest imports (required)
+                (r'def\s+test_', True),  # Test functions (required)
+                # Note: @pytest decorators are optional, not validating them
                 (r'describe\s*\(', False),  # Should NOT have JS describe
                 (r'it\s*\(', False),  # Should NOT have JS it
+                (r'@Test', False),  # Should NOT have Java annotations
             ],
             'junit': [
                 (r'@Test', True),  # JUnit annotations

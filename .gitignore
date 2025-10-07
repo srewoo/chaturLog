@@ -320,3 +320,4 @@ reports/
 # - requirements.txt
 # - package.json
 # - .env.example (templates only, never actual .env files!)
+tests/setup_api_keys.py

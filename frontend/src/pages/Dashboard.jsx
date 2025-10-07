@@ -24,7 +24,7 @@ export default function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
   const [aiModel, setAiModel] = useState('gpt-4o');
-  const [framework, setFramework] = useState('jest');
+  const [framework, setFramework] = useState('pytest');
   const [analyses, setAnalyses] = useState([]);
   const [currentAnalysis, setCurrentAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -559,7 +559,7 @@ export default function Dashboard() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="jest">Jest (JavaScript)</SelectItem>
+                        <SelectItem value="jest">Jest (JavaScript) - BETA</SelectItem>
                         <SelectItem value="mocha">Mocha (JavaScript)</SelectItem>
                         <SelectItem value="cypress">Cypress (E2E)</SelectItem>
                         <SelectItem value="junit">JUnit (Java)</SelectItem>
